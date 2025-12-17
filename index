@@ -112,11 +112,16 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Game Constants
-        const PLAYER_SIZE = 30;
-        const FLOOR_HEIGHT = 10;
-        const PLAY_HEIGHT = 200; // Narrow play area height
-        const GRAVITY_SPEED = 0.25; // Removed (unused)
+        // ■■■ 設定（ここを変えるとゲームバランスが変わります） ■■■
+        const PLAYER_SIZE = 30;     // プレイヤーの大きさ
+        const FLOOR_HEIGHT = 10;    // 床の太さ
+        const PLAY_HEIGHT = 500;    // 上下の床の間隔（ここを増やすと広くなり、減らすと狭くなります）
+
+        // ジャンプの角度調整: 1.732 = tan(60°)
+        // ここを変えるとジャンプの角度が変わります (例: 1.0 = 45°, 0.5 = 26°)
+        const JUMP_ANGLE_TAN = 1.732;
+
+        // const GRAVITY_SPEED = 0.25; // Removed (unused)
 
         // Game State
         let width, height;
@@ -194,7 +199,7 @@
 
         function spawnObstacle() {
             const isTop = Math.random() < 0.5;
-            const obsHeight = 40 + Math.random() * 40; // Random height
+            const obsHeight = 100 + Math.random() * 40; // Random height
             const obsWidth = 30;
 
             let y;
@@ -253,7 +258,8 @@
 
             // Constant Velocity Jump (60 degrees)
             // tan(60) ≈ 1.732
-            const vy = gameSpeed * 1.732;
+            // Calculate vertical velocity based on game speed and jump angle
+            const vy = gameSpeed * JUMP_ANGLE_TAN;
 
             if (player.y < player.targetY) {
                 player.y += vy;
