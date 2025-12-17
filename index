@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Gravity Jump</title>
+    <style>
+        :root {
+            --bg-color: #050510;
+            --neon-cyan: #0ff;
+            --neon-pink: #f0f;
+            --neon-green: #0f0;
+            --neon-red: #f00;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            touch-action: none;
+            /* Prevent double-tap zoom */
+        }
+
+        #gameVars {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            z-index: 10;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        #gameOverScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid var(--neon-pink);
+            box-shadow: 0 0 20px var(--neon-pink);
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            color: var(--neon-cyan);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            background: transparent;
+            color: var(--neon-green);
+            border: 2px solid var(--neon-green);
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px var(--neon-green);
+        }
+
+        button:hover {
+            background: var(--neon-green);
+            color: black;
+            box-shadow: 0 0 20px var(--neon-green), 0 0 40px var(--neon-green);
+        }
+
+        canvas {
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+            border-top: 2px solid #333;
+            border-bottom: 2px solid #333;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="gameVars">SPEED: <span id="scoreDisplay">0</span></div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="gameOverScreen">
+        <h1>Game Over</h1>
+        <p>Your Score: <span id="finalScore">0</span></p>
+        <button onclick="resetGame()">Try Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game Constants
+        const PLAYER_SIZE = 30;
+        const FLOOR_HEIGHT = 10;
+        const PLAY_HEIGHT = 200; // Narrow play area height
+        const GRAVITY_SPEED = 0.25; // Removed (unused)
+
+        // Game State
+        let width, height;
+        let topFloorY, bottomFloorY;
+        let isRunning = true;
+        let score = 0;
+        let gameSpeed = 6;
+        let frameCount = 0;
+
+        let player = {
+            x: 100, // Will be set in resize()
+            y: 0, // Calculated dynamically
+            isOnTop: false, // false = bottom floor, true = top floor
+            color: '#0ff',
+            path: []
+        };
+
+        let obstacles = [];
+        let particles = [];
+
+        // Resize handling
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            // Calculate floor positions to center the play area
+            const centerY = height / 2;
+            topFloorY = centerY - (PLAY_HEIGHT / 2);
+            bottomFloorY = centerY + (PLAY_HEIGHT / 2);
+
+            // Position player slightly left of center
+            player.x = width * 0.3; // 30% from left
+
+            // Recalculate player Y based on current state to prevent glitching
+            updatePlayerTargetY();
+            // Snap to target immediately on resize
+            player.y = player.targetY;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Input handling
+        function toggleGravity() {
+            if (!isRunning) return;
+            player.isOnTop = !player.isOnTop;
+            updatePlayerTargetY();
+
+            // Add particles for effect
+            createExplosion(player.x, player.y, 10, player.color);
+        }
+
+        window.addEventListener('mousedown', toggleGravity);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling
+            toggleGravity();
+        }, { passive: false });
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+                toggleGravity();
+            }
+        });
+
+        function updatePlayerTargetY() {
+            // Target Y is the position the player WANTS to be at
+            // Bottom floor: bottomFloorY - FLOOR_HEIGHT - PLAYER_SIZE
+            // Top floor: topFloorY + FLOOR_HEIGHT
+            if (player.isOnTop) {
+                player.targetY = topFloorY + FLOOR_HEIGHT;
+            } else {
+                player.targetY = bottomFloorY - FLOOR_HEIGHT - PLAYER_SIZE;
+            }
+        }
+
+        function spawnObstacle() {
+            const isTop = Math.random() < 0.5;
+            const obsHeight = 40 + Math.random() * 40; // Random height
+            const obsWidth = 30;
+
+            let y;
+            if (isTop) {
+                y = topFloorY + FLOOR_HEIGHT; // Hanging from top ceiling
+            } else {
+                y = bottomFloorY - FLOOR_HEIGHT - obsHeight; // Growing from bottom floor
+            }
+
+            obstacles.push({
+                x: width,
+                y: y,
+                w: obsWidth,
+                h: obsHeight,
+                color: '#f00',
+                isTop: isTop
+            });
+        }
+
+        function createExplosion(x, y, count, color) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x + PLAYER_SIZE / 2,
+                    y: y + PLAYER_SIZE / 2,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function update() {
+            if (!isRunning) return;
+
+            score++;
+            frameCount++;
+            document.getElementById('scoreDisplay').innerText = Math.floor(score / 10);
+
+            // Increase speed slightly over time
+            if (frameCount % 600 === 0) {
+                gameSpeed += 0.5;
+            }
+
+            // Update Path
+            player.path.push({ x: player.x + PLAYER_SIZE / 2, y: player.y + PLAYER_SIZE / 2 });
+            for (let i = player.path.length - 1; i >= 0; i--) {
+                player.path[i].x -= gameSpeed;
+                if (player.path[i].x < 0) {
+                    player.path.splice(i, 1);
+                }
+            }
+
+            // Lerp player Y position for smooth gravity switch
+            // player.y += (player.targetY - player.y) * GRAVITY_SPEED;
+
+            // Constant Velocity Jump (60 degrees)
+            // tan(60) ≈ 1.732
+            const vy = gameSpeed * 1.732;
+
+            if (player.y < player.targetY) {
+                player.y += vy;
+                if (player.y > player.targetY) player.y = player.targetY;
+            } else if (player.y > player.targetY) {
+                player.y -= vy;
+                if (player.y < player.targetY) player.y = player.targetY;
+            }
+
+            // Player Trail (Removed)
+            /*
+            if (frameCount % 3 === 0) {
+                player.trail.push({ x: player.x, y: player.y, alpha: 0.8 });
+                if (player.trail.length > 10) player.trail.shift();
+            }
+            */
+
+            // Spawn Obstacles
+            // Spawn rate depends on gameSpeed (faster speed = more distance covered, so need consistent spacing)
+            // Current simplified logic: Random chance
+            if (frameCount % Math.max(30, Math.floor(100 - gameSpeed * 5)) === 0) {
+                spawnObstacle();
+            }
+
+            // Update Obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Collision Detection
+                // AABB
+                if (
+                    player.x < obs.x + obs.w &&
+                    player.x + PLAYER_SIZE > obs.x &&
+                    player.y < obs.y + obs.h &&
+                    player.y + PLAYER_SIZE > obs.y
+                ) {
+                    gameOver();
+                }
+
+                if (obs.x + obs.w < 0) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function draw() {
+            // Clear background with trail effect
+            ctx.fillStyle = 'rgba(5, 5, 16, 0.3)'; // Slightly transparent for trailing effect? No, let's keep it clean for this style
+            ctx.fillStyle = '#050510';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Grid (Retro Vibe)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            const offset = (frameCount * gameSpeed) % gridSize;
+
+            for (let x = -offset; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Draw Floors
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, topFloorY, width, FLOOR_HEIGHT); // Top Floor
+            ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, width, FLOOR_HEIGHT); // Bottom Floor
+
+            // Floor Neon Lines
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = player.isOnTop ? '#333' : '#0ff'; // Active floor glows
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, bottomFloorY - FLOOR_HEIGHT);
+            ctx.lineTo(width, bottomFloorY - FLOOR_HEIGHT);
+            ctx.stroke();
+
+            ctx.shadowColor = player.isOnTop ? '#f0f' : '#333';
+            ctx.strokeStyle = '#f0f';
+            ctx.beginPath();
+            ctx.moveTo(0, topFloorY + FLOOR_HEIGHT);
+            ctx.lineTo(width, topFloorY + FLOOR_HEIGHT);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Draw Player Path
+            if (player.path.length > 1) {
+                ctx.strokeStyle = player.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(player.path[0].x, player.path[0].y);
+                for (let i = 1; i < player.path.length; i++) {
+                    ctx.lineTo(player.path[i].x, player.path[i].y);
+                }
+                ctx.stroke();
+            }
+
+            // Draw Player
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
+            ctx.shadowBlur = 0;
+
+            // Draw Obstacles
+            obstacles.forEach(obs => {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = obs.color;
+                ctx.fillStyle = obs.color;
+
+                // Draw Triangle Spikes for visual flair
+                if (obs.isTop) {
+                    // Pointing down
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x, obs.y);
+                    ctx.lineTo(obs.x + obs.w, obs.y);
+                    ctx.lineTo(obs.x + obs.w / 2, obs.y + obs.h);
+                    ctx.fill();
+                } else {
+                    // Pointing up
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x, obs.y + obs.h);
+                    ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
+                    ctx.lineTo(obs.x + obs.w / 2, obs.y);
+                    ctx.fill();
+                }
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            if (isRunning) {
+                requestAnimationFrame(() => {
+                    update();
+                    draw();
+                });
+            }
+        }
+
+        function gameOver() {
+            isRunning = false;
+            createExplosion(player.x, player.y, 50, '#fff');
+            draw(); // Draw one last frame to show explosion
+
+            document.getElementById('finalScore').innerText = Math.floor(score / 10);
+            document.getElementById('gameOverScreen').style.display = 'block';
+        }
+
+        function resetGame() {
+            score = 0;
+            gameSpeed = 6;
+            obstacles = [];
+            particles = [];
+            player.isOnTop = false;
+            player.path = [];
+            updatePlayerTargetY();
+            player.y = player.targetY;
+
+            document.getElementById('gameOverScreen').style.display = 'none';
+            isRunning = true;
+            update(); // Restart loop
+            draw();
+        }
+
+        // Init
+        updatePlayerTargetY();
+        player.y = player.targetY; // Start at correct position
+        draw(); // Start loop
+
+    </script>
+</body>
+
+</html>
