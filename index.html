@@ -6,14 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neon Gravity Jump</title>
     <style>
+        /* カラーパレットの定義 */
         :root {
             --bg-color: #050510;
+            /* 背景色（深海のような濃い青） */
             --neon-cyan: #0ff;
+            /* ネオンシアン（プレイヤー、パス、一部の床） */
             --neon-pink: #f0f;
+            /* ネオンピンク（上部の床） */
             --neon-green: #0f0;
+            /* ネオングリーン（ボタン） */
             --neon-red: #f00;
+            /* ネオンレッド（障害物） */
         }
 
+        /* 全体的なレイアウト設定 */
         body {
             margin: 0;
             padding: 0;
@@ -21,25 +28,29 @@
             color: white;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
+            /* スクロールを禁止 */
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             touch-action: none;
-            /* Prevent double-tap zoom */
+            /* ダブルタップズームなどを防止 */
         }
 
+        /* スコア表示（左上） */
         #gameVars {
             position: absolute;
             top: 20px;
             left: 20px;
             pointer-events: none;
+            /* クリックを透過 */
             z-index: 10;
             font-size: 24px;
             font-weight: bold;
             text-shadow: 0 0 10px var(--neon-cyan);
         }
 
+        /* ゲームオーバー画面の設定 */
         #gameOverScreen {
             position: absolute;
             top: 50%;
@@ -47,15 +58,76 @@
             transform: translate(-50%, -50%);
             text-align: center;
             display: none;
+            /* 初期状態は非表示 */
             z-index: 20;
             background: rgba(0, 0, 0, 0.85);
+            /* 半透明の黒背景 */
             padding: 40px;
             border-radius: 20px;
             border: 2px solid var(--neon-pink);
             box-shadow: 0 0 20px var(--neon-pink);
             backdrop-filter: blur(5px);
+            /* 背後をぼかす */
         }
 
+        /* スタート画面（オーバーレイテキスト）の設定 */
+        #startScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 20;
+            pointer-events: none;
+            /* タップを背後のキャンバスに透過させる */
+            user-select: none;
+        }
+
+        /* タイトルのパルスアニメーション */
+        #startScreen h1 {
+            font-size: 60px;
+            margin: 0;
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        /* 「TAP TO START」の点滅アニメーション */
+        #startScreen p {
+            font-size: 24px;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px var(--neon-cyan);
+            letter-spacing: 2px;
+            animation: blink 1.5s infinite;
+        }
+
+        /* パルス効果のアニメーション定義 */
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+                text-shadow: 0 0 20px var(--neon-cyan);
+            }
+
+            50% {
+                transform: scale(1.05);
+                text-shadow: 0 0 40px var(--neon-cyan);
+            }
+        }
+
+        /* 点滅効果のアニメーション定義 */
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* 共通見出しスタイル */
         h1 {
             color: var(--neon-cyan);
             text-transform: uppercase;
@@ -64,11 +136,13 @@
             text-shadow: 0 0 10px var(--neon-cyan);
         }
 
+        /* 共通テキストスタイル */
         p {
             font-size: 18px;
             margin-bottom: 30px;
         }
 
+        /* ボタンスタイル（ネオン風） */
         button {
             background: transparent;
             color: var(--neon-green);
@@ -82,12 +156,14 @@
             box-shadow: 0 0 10px var(--neon-green);
         }
 
+        /* ボタンホバー時 */
         button:hover {
             background: var(--neon-green);
             color: black;
             box-shadow: 0 0 20px var(--neon-green), 0 0 40px var(--neon-green);
         }
 
+        /* キャンバスの設定 */
         canvas {
             box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
             border-top: 2px solid #333;
@@ -98,98 +174,136 @@
 
 <body>
 
-    <div id="gameVars">SPEED: <span id="scoreDisplay">0</span></div>
+    <div id="gameVars">SCORE: <span id="scoreDisplay">0</span></div>
 
     <canvas id="gameCanvas"></canvas>
+
+    <div id="startScreen">
+        <h1>NEON GRAVITY</h1>
+        <p>TAP TO START</p>
+    </div>
 
     <div id="gameOverScreen">
         <h1>Game Over</h1>
         <p>Your Score: <span id="finalScore">0</span></p>
-        <button onclick="resetGame()">Try Again</button>
+        <button onclick="resetGame(event)">Try Again</button>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // ■■■ 設定（ここを変えるとゲームバランスが変わります） ■■■
-        const PLAYER_SIZE = 30;     // プレイヤーの大きさ
-        const FLOOR_HEIGHT = 10;    // 床の太さ
-        const PLAY_HEIGHT = 500;    // 上下の床の間隔（ここを増やすと広くなり、減らすと狭くなります）
+        // ■■■ ゲームバランス設定（ここを変えることで難易度を調整できます） ■■■
+        const PLAYER_SIZE = 30;     // プレイヤー（自機）の1辺の長さ
+        const FLOOR_HEIGHT = 10;    // 床（天井と地表）の厚み
+        const PLAY_HEIGHT = 500;    // 天井から地表までの垂直距離
 
-        // ジャンプの角度調整: 1.732 = tan(60°)
-        // ここを変えるとジャンプの角度が変わります (例: 1.0 = 45°, 0.5 = 26°)
+        // ジャンプの挙動設定: 1.732 は tan(60°)
+        // ここを変えるとジャンプ（重力反転）時の角度が変わります (例: 1.0 = 45度, 0.5 = 約26度)
         const JUMP_ANGLE_TAN = 1.732;
 
-        // const GRAVITY_SPEED = 0.25; // Removed (unused)
+        // --- ゲームの状態管理変数 ---
+        let width, height;          // キャンバスの幅と高さ
+        let topFloorY, bottomFloorY;// 天井と地表のY座標
+        let isRunning = true;       // ゲームループを実行中かどうか（常にtrueに設定し背景を動かす）
+        let gameStarted = false;    // 実際にスコア計算や障害物生成が開始されているか
+        let score = 0;              // 現在のスコア
+        let gameSpeed = 6;          // オブジェクトが左に流れる速度
+        let frameCount = 0;         // 累積フレーム数（アニメーションや生成タイミングに使用）
 
-        // Game State
-        let width, height;
-        let topFloorY, bottomFloorY;
-        let isRunning = true;
-        let score = 0;
-        let gameSpeed = 6;
-        let frameCount = 0;
-
+        // プレイヤーのデータ構造
         let player = {
-            x: 100, // Will be set in resize()
-            y: 0, // Calculated dynamically
-            isOnTop: false, // false = bottom floor, true = top floor
-            color: '#0ff',
-            path: []
+            x: 100,             // X座標（resize関数で設定される）
+            y: 0,               // 現在のY座標
+            targetY: 0,         // 移動先の目標Y座標（重力反転で切り替わる）
+            isOnTop: false,     // 現在の状態（false=地表, true=天井）
+            color: '#0ff',      // プレイヤーの色
+            path: []            // プレイヤーの通った軌跡を保持する配列
         };
 
-        let obstacles = [];
-        let particles = [];
+        // 配列管理
+        let obstacles = [];     // 画面上に存在する障害物のリスト
+        let particles = [];     // 爆発エフェクトのパーティクルリスト
 
-        // Resize handling
+        /**
+         * 画面サイズが変更された際の処理
+         * キャンバスサイズを再設定し、プレイヤーや床の位置を計算し直します。
+         */
         function resize() {
             width = window.innerWidth;
             height = window.innerHeight;
             canvas.width = width;
             canvas.height = height;
 
-            // Calculate floor positions to center the play area
+            // プレイエリアを画面中央に配置するための床の位置計算
             const centerY = height / 2;
             topFloorY = centerY - (PLAY_HEIGHT / 2);
             bottomFloorY = centerY + (PLAY_HEIGHT / 2);
 
-            // Position player slightly left of center
-            player.x = width * 0.3; // 30% from left
+            // プレイヤーを画面左から30%の位置に固定
+            player.x = width * 0.3;
 
-            // Recalculate player Y based on current state to prevent glitching
+            // プレイヤーのY座標を現在の状態に基づいて再計算（ガタつき防止）
             updatePlayerTargetY();
-            // Snap to target immediately on resize
-            player.y = player.targetY;
+            player.y = player.targetY; // リサイズ時は即座に位置を合わせる
         }
         window.addEventListener('resize', resize);
         resize();
 
-        // Input handling
+        /**
+         * 重力（上下）を反転させる関数
+         */
         function toggleGravity() {
             if (!isRunning) return;
-            player.isOnTop = !player.isOnTop;
-            updatePlayerTargetY();
+            player.isOnTop = !player.isOnTop; // 状態を切り替え
+            updatePlayerTargetY();            // 目標地点を更新
 
-            // Add particles for effect
+            // 重力切り替え時のエフェクト生成
             createExplosion(player.x, player.y, 10, player.color);
         }
 
-        window.addEventListener('mousedown', toggleGravity);
-        window.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // Prevent scrolling
+        /**
+         * 入力を一括で処理するハンドラ
+         * マウス、タッチ、キーボードの入力を受け取り、ゲーム開始または重力反転を実行します。
+         */
+        function handleInput(e) {
+            // ボタン（リトライボタンなど）がクリックされた場合はゲーム内操作としての入力を無視
+            if (e.target.tagName === 'BUTTON') return;
+
+            // 未開始の場合はタップでゲームスタート
+            if (!gameStarted) {
+                startGame();
+                return;
+            }
+
+            // ゲーム中は重力反転を実行
             toggleGravity();
+        }
+
+        // 各種イベントリスナーの登録
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            e.preventDefault(); // デフォルトのスクロールやズーム動作を防止
+            handleInput(e);
         }, { passive: false });
+
         window.addEventListener('keydown', (e) => {
+            // スペースキー、上矢印、下矢印で操作可能
             if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
-                toggleGravity();
+                if (gameStarted) {
+                    toggleGravity();
+                } else {
+                    startGame();
+                }
             }
         });
 
+        /**
+         * 現在の状態に基づいてプレイヤーの目標Y座標を決定します
+         */
         function updatePlayerTargetY() {
-            // Target Y is the position the player WANTS to be at
-            // Bottom floor: bottomFloorY - FLOOR_HEIGHT - PLAYER_SIZE
-            // Top floor: topFloorY + FLOOR_HEIGHT
+            // 天井にいる場合は天井の床下すぐの座標。それ以外（地表）は地表の床のすぐ上の座標。
             if (player.isOnTop) {
                 player.targetY = topFloorY + FLOOR_HEIGHT;
             } else {
@@ -197,135 +311,143 @@
             }
         }
 
+        /**
+         * 障害物をランダムに生成します
+         */
         function spawnObstacle() {
-            const isTop = Math.random() < 0.5;
-            const obsHeight = 100 + Math.random() * 40; // Random height
-            const obsWidth = 30;
+            const isTop = Math.random() < 0.5;          // 天井か地表かをランダムに決定
+            const obsHeight = 100 + Math.random() * 40; // 障害物の高さをランダム化
+            const obsWidth = 30;                        // 障害物の幅
 
             let y;
             if (isTop) {
-                y = topFloorY + FLOOR_HEIGHT; // Hanging from top ceiling
+                y = topFloorY + FLOOR_HEIGHT;           // 天井から下に伸びる
             } else {
-                y = bottomFloorY - FLOOR_HEIGHT - obsHeight; // Growing from bottom floor
+                y = bottomFloorY - FLOOR_HEIGHT - obsHeight; // 地表から上に伸びる
             }
 
+            // 配列に新規オブジェクトを追加
             obstacles.push({
-                x: width,
+                x: width,           // 画面右端から出現
                 y: y,
                 w: obsWidth,
                 h: obsHeight,
-                color: '#f00',
-                isTop: isTop
+                color: '#f00',      // 障害物は赤色
+                isTop: isTop        // 描画時の向き判定に使用
             });
         }
 
+        /**
+         * パーティクル（爆発）エフェクトを生成します
+         */
         function createExplosion(x, y, count, color) {
             for (let i = 0; i < count; i++) {
                 particles.push({
-                    x: x + PLAYER_SIZE / 2,
+                    x: x + PLAYER_SIZE / 2,     // プレイヤーの中心から放出
                     y: y + PLAYER_SIZE / 2,
-                    vx: (Math.random() - 0.5) * 10,
+                    vx: (Math.random() - 0.5) * 10, // ランダムな速度
                     vy: (Math.random() - 0.5) * 10,
-                    life: 1.0,
+                    life: 1.0,                  // パーティクルの不透明度（寿命）
                     color: color
                 });
             }
         }
 
+        /**
+         * ゲームの状態を更新するメイン関数（ロジック担当）
+         */
         function update() {
             if (!isRunning) return;
 
-            score++;
-            frameCount++;
-            document.getElementById('scoreDisplay').innerText = Math.floor(score / 10);
-
-            // Increase speed slightly over time
-            if (frameCount % 600 === 0) {
-                gameSpeed += 0.5;
+            // スコアとフレームカウントの更新
+            if (gameStarted) {
+                score++;
             }
+            frameCount++;
 
-            // Update Path
-            player.path.push({ x: player.x + PLAYER_SIZE / 2, y: player.y + PLAYER_SIZE / 2 });
-            for (let i = player.path.length - 1; i >= 0; i--) {
-                player.path[i].x -= gameSpeed;
-                if (player.path[i].x < 0) {
-                    player.path.splice(i, 1);
+            if (gameStarted) {
+                // UI上のスコア表示を更新（10フレームで1スコア相当）
+                document.getElementById('scoreDisplay').innerText = Math.floor(score / 10);
+
+                // 600フレーム（約10秒）ごとにスピードをわずかにアップ
+                if (frameCount % 600 === 0) {
+                    gameSpeed += 0.5;
+                }
+                if (score % 1000 == 0) {
+                    gameSpeed += 2;
                 }
             }
 
-            // Lerp player Y position for smooth gravity switch
-            // player.y += (player.targetY - player.y) * GRAVITY_SPEED;
+            // プレイヤーの軌跡（ライン）の更新
+            player.path.push({ x: player.x + PLAYER_SIZE / 2, y: player.y + PLAYER_SIZE / 2 });
+            for (let i = player.path.length - 1; i >= 0; i--) {
+                player.path[i].x -= gameSpeed; // 軌跡も背景に合わせて左へ
+                if (player.path[i].x < 0) {
+                    player.path.splice(i, 1); // 画面外に消えた軌跡を削除
+                }
+            }
 
-            // Constant Velocity Jump (60 degrees)
-            // tan(60) ≈ 1.732
-            // Calculate vertical velocity based on game speed and jump angle
+            // プレイヤーの上下移動（重力反転の反映）
+            // 60度の角度で移動するように垂直速度を計算
             const vy = gameSpeed * JUMP_ANGLE_TAN;
 
             if (player.y < player.targetY) {
-                player.y += vy;
-                if (player.y > player.targetY) player.y = player.targetY;
+                player.y += vy; // 下へ移動
+                if (player.y > player.targetY) player.y = player.targetY; // 目標地点で停止
             } else if (player.y > player.targetY) {
-                player.y -= vy;
-                if (player.y < player.targetY) player.y = player.targetY;
+                player.y -= vy; // 上へ移動
+                if (player.y < player.targetY) player.y = player.targetY; // 目標地点で停止
             }
 
-            // Player Trail (Removed)
-            /*
-            if (frameCount % 3 === 0) {
-                player.trail.push({ x: player.x, y: player.y, alpha: 0.8 });
-                if (player.trail.length > 10) player.trail.shift();
-            }
-            */
-
-            // Spawn Obstacles
-            // Spawn rate depends on gameSpeed (faster speed = more distance covered, so need consistent spacing)
-            // Current simplified logic: Random chance
-            if (frameCount % Math.max(30, Math.floor(100 - gameSpeed * 5)) === 0) {
+            // 障害物の生成（ゲーム開始後のみ）
+            if (gameStarted && frameCount % Math.max(30, Math.floor(100 - gameSpeed * 5)) === 0) {
                 spawnObstacle();
             }
 
-            // Update Obstacles
+            // 障害物の更新と当たり判定
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 let obs = obstacles[i];
-                obs.x -= gameSpeed;
+                obs.x -= gameSpeed; // 左へ移動
 
-                // Collision Detection
-                // AABB
+                // 当たり判定 (AABB方式: 矩形同士の重なりチェック)
                 if (
                     player.x < obs.x + obs.w &&
                     player.x + PLAYER_SIZE > obs.x &&
                     player.y < obs.y + obs.h &&
                     player.y + PLAYER_SIZE > obs.y
                 ) {
-                    gameOver();
+                    gameOver(); // 衝突したらゲームオーバー
                 }
 
+                // 画面外に消えた障害物をリストから削除
                 if (obs.x + obs.w < 0) {
                     obstacles.splice(i, 1);
                 }
             }
 
-            // Update Particles
+            // パーティクルの更新
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
                 p.x += p.vx;
                 p.y += p.vy;
-                p.life -= 0.05;
+                p.life -= 0.05; // 寿命を減らすことで少しずつ透明に
                 if (p.life <= 0) particles.splice(i, 1);
             }
         }
 
+        /**
+         * 描画を担当するメイン関数
+         */
         function draw() {
-            // Clear background with trail effect
-            ctx.fillStyle = 'rgba(5, 5, 16, 0.3)'; // Slightly transparent for trailing effect? No, let's keep it clean for this style
+            // 背景のクリア
             ctx.fillStyle = '#050510';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw Grid (Retro Vibe)
+            // 背景グリッド（レトロな雰囲気用）の描画
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
             ctx.lineWidth = 1;
             const gridSize = 50;
-            const offset = (frameCount * gameSpeed) % gridSize;
+            const offset = (frameCount * gameSpeed) % gridSize; // 横に流れるようにオフセットを計算
 
             for (let x = -offset; x < width; x += gridSize) {
                 ctx.beginPath();
@@ -340,14 +462,16 @@
                 ctx.stroke();
             }
 
-            // Draw Floors
+            // 床の描画（濃いグレーの土台）
             ctx.fillStyle = '#111';
-            ctx.fillRect(0, topFloorY, width, FLOOR_HEIGHT); // Top Floor
-            ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, width, FLOOR_HEIGHT); // Bottom Floor
+            ctx.fillRect(0, topFloorY, width, FLOOR_HEIGHT); // 天井
+            ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, width, FLOOR_HEIGHT); // 地表
 
-            // Floor Neon Lines
+            // ネオンラインの描画（現在いる側の床を光らせる）
             ctx.shadowBlur = 10;
-            ctx.shadowColor = player.isOnTop ? '#333' : '#0ff'; // Active floor glows
+
+            // 下側の床のライン
+            ctx.shadowColor = player.isOnTop ? '#333' : '#0ff';
             ctx.strokeStyle = '#0ff';
             ctx.lineWidth = 4;
             ctx.beginPath();
@@ -355,15 +479,16 @@
             ctx.lineTo(width, bottomFloorY - FLOOR_HEIGHT);
             ctx.stroke();
 
+            // 上側の床のライン
             ctx.shadowColor = player.isOnTop ? '#f0f' : '#333';
             ctx.strokeStyle = '#f0f';
             ctx.beginPath();
             ctx.moveTo(0, topFloorY + FLOOR_HEIGHT);
             ctx.lineTo(width, topFloorY + FLOOR_HEIGHT);
             ctx.stroke();
-            ctx.shadowBlur = 0;
+            ctx.shadowBlur = 0; // 他の描画に影を引き継がないようリセット
 
-            // Draw Player Path
+            // プレイヤーの軌跡（ライン）を描画
             if (player.path.length > 1) {
                 ctx.strokeStyle = player.color;
                 ctx.lineWidth = 2;
@@ -375,29 +500,28 @@
                 ctx.stroke();
             }
 
-            // Draw Player
+            // プレイヤー本体の描画
             ctx.shadowBlur = 20;
             ctx.shadowColor = player.color;
             ctx.fillStyle = player.color;
             ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
             ctx.shadowBlur = 0;
 
-            // Draw Obstacles
+            // 障害物の描画（トゲトゲの三角形として表示）
             obstacles.forEach(obs => {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = obs.color;
                 ctx.fillStyle = obs.color;
 
-                // Draw Triangle Spikes for visual flair
                 if (obs.isTop) {
-                    // Pointing down
+                    // 天井側：下向きの三角形
                     ctx.beginPath();
                     ctx.moveTo(obs.x, obs.y);
                     ctx.lineTo(obs.x + obs.w, obs.y);
                     ctx.lineTo(obs.x + obs.w / 2, obs.y + obs.h);
                     ctx.fill();
                 } else {
-                    // Pointing up
+                    // 地表側：上向きの三角形
                     ctx.beginPath();
                     ctx.moveTo(obs.x, obs.y + obs.h);
                     ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
@@ -407,16 +531,17 @@
                 ctx.shadowBlur = 0;
             });
 
-            // Draw Particles
+            // パーティクルの描画
             particles.forEach(p => {
                 ctx.fillStyle = p.color;
-                ctx.globalAlpha = p.life;
+                ctx.globalAlpha = p.life; // 寿命（残りライフ）を透明度として利用
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
                 ctx.fill();
             });
-            ctx.globalAlpha = 1.0;
+            ctx.globalAlpha = 1.0; // 透明度を戻す
 
+            // ゲームが停止していない場合は次のフレームを予約
             if (isRunning) {
                 requestAnimationFrame(() => {
                     update();
@@ -425,16 +550,33 @@
             }
         }
 
-        function gameOver() {
-            isRunning = false;
-            createExplosion(player.x, player.y, 50, '#fff');
-            draw(); // Draw one last frame to show explosion
-
-            document.getElementById('finalScore').innerText = Math.floor(score / 10);
-            document.getElementById('gameOverScreen').style.display = 'block';
+        /**
+         * ゲームを開始する処理
+         */
+        function startGame(e) {
+            if (e) e.stopPropagation();
+            gameStarted = true;
+            document.getElementById('startScreen').style.display = 'none'; // テキストを非表示に
         }
 
-        function resetGame() {
+        /**
+         * ゲームオーバー時の処理
+         */
+        function gameOver() {
+            isRunning = false; // ループを停止
+            createExplosion(player.x, player.y, 50, '#fff'); // 大きな白い爆発を生成
+
+            document.getElementById('finalScore').innerText = Math.floor(score / 10);
+            document.getElementById('gameOverScreen').style.display = 'block'; // 終了画面を表示
+        }
+
+        /**
+         * ゲームをリセットしてリトライする処理
+         */
+        function resetGame(e) {
+            if (e) e.stopPropagation();
+
+            // 各種変数を初期値に戻す
             score = 0;
             gameSpeed = 6;
             obstacles = [];
@@ -443,17 +585,21 @@
             player.path = [];
             updatePlayerTargetY();
             player.y = player.targetY;
+            gameStarted = true; // リトライ時は即座に開始
 
             document.getElementById('gameOverScreen').style.display = 'none';
             isRunning = true;
-            update(); // Restart loop
-            draw();
+
+            // requestAnimationFrameがdraw()を呼び出すため、
+            // isRunningをtrueに設定するだけでループが再開される
         }
 
         // Init
         updatePlayerTargetY();
         player.y = player.targetY; // Start at correct position
-        draw(); // Start loop
+
+        // Initial Draw to show background and player before start
+        draw();
 
     </script>
 </body>
