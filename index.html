@@ -45,9 +45,19 @@
             pointer-events: none;
             /* クリックを透過 */
             z-index: 10;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
+            line-height: 1.4;
             text-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        #gameVars div {
+            margin-bottom: 5px;
+        }
+
+        #hiScoreValue {
+            color: var(--neon-pink);
+            text-shadow: 0 0 10px var(--neon-pink);
         }
 
         /* ゲームオーバー画面の設定 */
@@ -127,6 +137,67 @@
             }
         }
 
+        /* ランキングテーブルのスタイル */
+        .ranking-table {
+            width: 100%;
+            max-width: 300px;
+            margin: 20px auto;
+            border-collapse: collapse;
+            font-size: 16px;
+        }
+
+        .ranking-table th,
+        .ranking-table td {
+            padding: 8px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+            text-align: left;
+        }
+
+        .ranking-table th {
+            color: var(--neon-cyan);
+        }
+
+        .ranking-table td:last-child {
+            text-align: right;
+            color: var(--neon-pink);
+        }
+
+        /* 名前入力フォームのスタイル */
+        #registrationPrompt,
+        #nameInputSection {
+            margin: 20px 0;
+            display: none;
+            /* 必要時のみ表示 */
+        }
+
+        .prompt-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        /* 小さめのボタン（Yes/No用） */
+        .btn-small {
+            padding: 8px 20px;
+            font-size: 14px;
+        }
+
+        #playerNameInput {
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            color: white;
+            padding: 10px;
+            font-size: 18px;
+            width: 180px;
+            outline: none;
+            margin-bottom: 15px;
+        }
+
+        #playerNameInput:focus {
+            box-shadow: 0 0 10px var(--neon-cyan);
+        }
+
         /* 共通見出しスタイル */
         h1 {
             color: var(--neon-cyan);
@@ -174,7 +245,10 @@
 
 <body>
 
-    <div id="gameVars">SCORE: <span id="scoreDisplay">0</span></div>
+    <div id="gameVars">
+        <div>SCORE: <span id="scoreDisplay">0</span></div>
+        <div>HI-SCORE: <span id="hiScoreValue">0</span></div>
+    </div>
 
     <canvas id="gameCanvas"></canvas>
 
@@ -186,7 +260,33 @@
     <div id="gameOverScreen">
         <h1>Game Over</h1>
         <p>Your Score: <span id="finalScore">0</span></p>
-        <button onclick="resetGame(event)">Try Again</button>
+
+        <!-- 登録確認プロンプト -->
+        <div id="registrationPrompt">
+            <p style="color: var(--neon-cyan); margin-bottom: 5px;">RANK IN! Register your score?</p>
+            <div class="prompt-buttons">
+                <button class="btn-small" onclick="showNameInput()">YES</button>
+                <button class="btn-small" style="color: #888; border-color: #888; box-shadow: none;"
+                    onclick="skipRegistration()">NO</button>
+            </div>
+        </div>
+
+        <!-- 名前入力エリア -->
+        <div id="nameInputSection">
+            <p style="color: var(--neon-green); margin-bottom: 10px;">ENTER YOUR NAME</p>
+            <input type="text" id="playerNameInput" placeholder="Name" maxlength="10">
+            <br>
+            <button class="btn-small" onclick="registerRanking()">Register</button>
+        </div>
+
+        <div id="rankingDisplay">
+            <h3 style="color: var(--neon-cyan); margin: 10px 0;">LEADERBOARD</h3>
+            <table class="ranking-table" id="rankingTable">
+                <!-- Javascript will fill this -->
+            </table>
+        </div>
+
+        <button id="retryButton" onclick="resetGame(event)">Try Again</button>
     </div>
 
     <script>
@@ -210,6 +310,8 @@
         let score = 0;              // 現在のスコア
         let gameSpeed = 6;          // オブジェクトが左に流れる速度
         let frameCount = 0;         // 累積フレーム数（アニメーションや生成タイミングに使用）
+        let highScore = 0;          // 歴代最高スコア
+        let rankings = [];          // ランキングデータ [{name, score}, ...]
 
         // プレイヤーのデータ構造
         let player = {
@@ -566,13 +668,132 @@
             isRunning = false; // ループを停止
             createExplosion(player.x, player.y, 50, '#fff'); // 大きな白い爆発を生成
 
-            document.getElementById('finalScore').innerText = Math.floor(score / 10);
+            const finalScoreVal = Math.floor(score / 10);
+            document.getElementById('finalScore').innerText = finalScoreVal;
+
+            // ハイスコアのチェックと更新
+            if (finalScoreVal > highScore) {
+                highScore = finalScoreVal;
+                localStorage.setItem('neonGravity_highScore', highScore);
+                document.getElementById('hiScoreValue').innerText = highScore;
+            }
+
+            // ランキングの表示と入力判定
+            updateRankingDisplay();
+            checkRankingQualified(finalScoreVal);
+
             document.getElementById('gameOverScreen').style.display = 'block'; // 終了画面を表示
         }
 
         /**
-         * ゲームをリセットしてリトライする処理
+         * ランキング圏内かチェックし、プロンプトを表示する
          */
+        function checkRankingQualified(currentScore) {
+            const promptSection = document.getElementById('registrationPrompt');
+            const inputSection = document.getElementById('nameInputSection');
+
+            // TOP5以内か、まだ5人未満の場合
+            if (rankings.length < 5 || currentScore > rankings[rankings.length - 1].score) {
+                promptSection.style.display = 'block';
+                inputSection.style.display = 'none';
+            } else {
+                promptSection.style.display = 'none';
+                inputSection.style.display = 'none';
+            }
+        }
+
+        /**
+         * 名前入力フィールドを表示する（YES選択時）
+         */
+        function showNameInput() {
+            document.getElementById('registrationPrompt').style.display = 'none';
+            document.getElementById('nameInputSection').style.display = 'block';
+        }
+
+        /**
+         * 登録をスキップする（NO選択時）
+         */
+        function skipRegistration() {
+            document.getElementById('registrationPrompt').style.display = 'none';
+        }
+
+        /**
+         * ランキングデータをロードする
+         */
+        function loadRankings() {
+            const saved = localStorage.getItem('neonGravity_rankings');
+            rankings = saved ? JSON.parse(saved) : [];
+            // ハイスコアもロード
+            const savedHi = localStorage.getItem('neonGravity_highScore');
+            highScore = savedHi ? parseInt(savedHi) : 0;
+            document.getElementById('hiScoreValue').innerText = highScore;
+        }
+
+        /**
+         * ランキング表示を更新する
+         */
+        function updateRankingDisplay() {
+            const table = document.getElementById('rankingTable');
+            table.innerHTML = '<tr><th>RANK</th><th>NAME</th><th>SCORE</th></tr>';
+
+            rankings.slice(0, 5).forEach((entry, index) => {
+                const row = table.insertRow(-1);
+                row.insertCell(0).innerText = index + 1;
+                row.insertCell(1).innerText = entry.name;
+                row.insertCell(2).innerText = entry.score;
+            });
+
+            // ランク外の場合（データがない時）の表示
+            if (rankings.length === 0) {
+                const row = table.insertRow(-1);
+                const cell = row.insertCell(0);
+                cell.colSpan = 3;
+                cell.style.textAlign = 'center';
+                cell.innerText = 'No records yet';
+            }
+        }
+
+        /**
+         * ランキングに登録する
+         */
+        function registerRanking() {
+            const nameInput = document.getElementById('playerNameInput');
+            const name = nameInput.value.trim() || 'NONAME';
+            const finalScoreVal = Math.floor(score / 10);
+
+            // データを追加してソート
+            rankings.push({ name: name, score: finalScoreVal });
+            rankings.sort((a, b) => b.score - a.score);
+
+            // TOP5のみ保持
+            rankings = rankings.slice(0, 5);
+
+            // 保存
+            localStorage.setItem('neonGravity_rankings', JSON.stringify(rankings));
+
+            // 画面更新
+            updateRankingDisplay();
+            document.getElementById('nameInputSection').style.display = 'none';
+            nameInput.value = ''; // クリア
+        }
+
+        /**
+         * 管理者用：ランキングをリセットする関数
+         * ブラウザのコンソールから resetRankingsAdmin() を実行してください。
+         */
+        window.resetRankingsAdmin = function () {
+            if (confirm("ランキングデータをすべてリセットしますか？")) {
+                localStorage.removeItem('neonGravity_rankings');
+                localStorage.removeItem('neonGravity_highScore');
+                rankings = [];
+                highScore = 0;
+                const hiScoreElement = document.getElementById('hiScoreValue');
+                if (hiScoreElement) hiScoreElement.innerText = '0';
+                updateRankingDisplay();
+                alert("リセットが完了しました。");
+            }
+        };
+
         function resetGame(e) {
             if (e) e.stopPropagation();
 
@@ -598,8 +819,11 @@
         updatePlayerTargetY();
         player.y = player.targetY; // Start at correct position
 
-        // Initial Draw to show background and player before start
+        // 初期描画
         draw();
+
+        // ランキングのロード
+        loadRankings();
 
     </script>
 </body>
