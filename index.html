@@ -164,7 +164,8 @@
 
         /* 名前入力フォームのスタイル */
         #registrationPrompt,
-        #nameInputSection {
+        #nameInputSection,
+        #rankingDisplay {
             margin: 20px 0;
             display: none;
             /* 必要時のみ表示 */
@@ -678,29 +679,31 @@
                 document.getElementById('hiScoreValue').innerText = highScore;
             }
 
-            // ランキングの表示と入力判定
+            // ランキングの表示準備
             updateRankingDisplay();
-            checkRankingQualified(finalScoreVal);
+
+            // ランクインしているか確認
+            const isQualified = rankings.length < 5 || finalScoreVal > rankings[rankings.length - 1].score;
+
+            if (isQualified) {
+                // ランクイン時：まずYes/Noプロンプトだけ表示
+                document.getElementById('registrationPrompt').style.display = 'block';
+                document.getElementById('nameInputSection').style.display = 'none';
+                document.getElementById('rankingDisplay').style.display = 'none';
+            } else {
+                // ランク外：通常通りランキングを表示
+                document.getElementById('registrationPrompt').style.display = 'none';
+                document.getElementById('nameInputSection').style.display = 'none';
+                document.getElementById('rankingDisplay').style.display = 'block';
+            }
 
             document.getElementById('gameOverScreen').style.display = 'block'; // 終了画面を表示
         }
 
         /**
-         * ランキング圏内かチェックし、プロンプトを表示する
+         * ランクイン圏内チェック (gameOver内で実行するため省略、または空関数)
          */
-        function checkRankingQualified(currentScore) {
-            const promptSection = document.getElementById('registrationPrompt');
-            const inputSection = document.getElementById('nameInputSection');
-
-            // TOP5以内か、まだ5人未満の場合
-            if (rankings.length < 5 || currentScore > rankings[rankings.length - 1].score) {
-                promptSection.style.display = 'block';
-                inputSection.style.display = 'none';
-            } else {
-                promptSection.style.display = 'none';
-                inputSection.style.display = 'none';
-            }
-        }
+        function checkRankingQualified(currentScore) { }
 
         /**
          * 名前入力フィールドを表示する（YES選択時）
@@ -715,6 +718,7 @@
          */
         function skipRegistration() {
             document.getElementById('registrationPrompt').style.display = 'none';
+            document.getElementById('rankingDisplay').style.display = 'block'; // ランキングを表示する
         }
 
         /**
@@ -774,6 +778,7 @@
             // 画面更新
             updateRankingDisplay();
             document.getElementById('nameInputSection').style.display = 'none';
+            document.getElementById('rankingDisplay').style.display = 'block'; // 登録後もランキングを表示
             nameInput.value = ''; // クリア
         }
 
@@ -811,8 +816,8 @@
             document.getElementById('gameOverScreen').style.display = 'none';
             isRunning = true;
 
-            // requestAnimationFrameがdraw()を呼び出すため、
-            // isRunningをtrueに設定するだけでループが再開される
+            // draw()を再度呼び出してループを確実に再開させる（isRunning=falseで停止していたため）
+            draw();
         }
 
         // Init
