@@ -970,15 +970,16 @@
 
                 const item = document.createElement('div');
                 item.style.cssText = `
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid ${isSelected ? skin.color : 'rgba(255,255,255,0.2)'};
+                    background: ${isSelected ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)'};
+                    border: 2px solid ${isSelected ? skin.color : 'rgba(255,255,255,0.2)'};
                     padding: 10px;
                     border-radius: 10px;
                     width: 70px;
                     text-align: center;
                     cursor: pointer;
                     transition: all 0.2s;
-                    box-shadow: ${isSelected ? `0 0 10px ${skin.color}` : 'none'};
+                    box-shadow: ${isSelected ? `0 0 15px ${skin.color}` : 'none'};
+                    transform: ${isSelected ? 'scale(1.05)' : 'scale(1)'};
                 `;
 
                 item.innerHTML = `
@@ -1024,6 +1025,7 @@
             const skin = SKINS.find(s => s.id === id);
             if (skin) {
                 player.color = skin.color;
+                console.log(`Skin applied: ${skin.name} (${skin.color})`);
                 saveGameData();
                 renderSkinShop();
             }
@@ -1091,7 +1093,8 @@
          * ブラウザのコンソールから resetRankingsAdmin() を実行してください。
          */
         window.resetRankingsAdmin = function () {
-            if (confirm("ゲームデータをすべてリセットしますか？")) {
+            if (confirm("ローカルおよびグローバルのランキングデータをすべてリセットしますか？")) {
+                // ローカル削除
                 localStorage.removeItem('neonGravity_rankings');
                 localStorage.removeItem('neonGravity_highScore');
                 localStorage.removeItem('neonGravity_totalCoins');
@@ -1105,10 +1108,22 @@
                 applySkin('cyan');
                 const hiScoreElement = document.getElementById('hiScoreValue');
                 if (hiScoreElement) hiScoreElement.innerText = '0';
+
+                // グローバル削除 (Dreamlo)
+                fetch(`${DREAMLO_PRIVATE_URL}/clear`)
+                    .then(() => {
+                        console.log("Global leaderboard cleared.");
+                        alert("ローカルとグローバルのリセットが完了しました。");
+                        loadRankings();
+                    })
+                    .catch(err => {
+                        console.error("Global clear failed:", err);
+                        alert("ローカルはリセットされましたが、グローバル消去に失敗しました。");
+                    });
+
                 updateCoinDisplay();
                 updateRankingDisplay();
                 renderSkinShop();
-                alert("リセットが完了しました。");
             }
         };
 
