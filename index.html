@@ -253,6 +253,80 @@
             box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
             border-top: 2px solid #333;
             border-bottom: 2px solid #333;
+            max-width: 100vw;
+            max-height: 100vh;
+        }
+
+        /* モバイル対応：メディアクエリ */
+        @media screen and (max-width: 600px) {
+            #startScreen h1 {
+                font-size: 36px;
+                letter-spacing: 2px;
+            }
+
+            #startScreen p {
+                font-size: 18px;
+            }
+
+            #gameOverScreen {
+                width: 90%;
+                padding: 20px;
+                max-height: 90vh;
+                overflow-y: auto;
+            }
+
+            #gameOverScreen h1 {
+                font-size: 32px;
+            }
+
+            button {
+                padding: 12px 30px;
+                font-size: 16px;
+            }
+
+            #gameVars {
+                top: 10px;
+                left: 10px;
+                font-size: 14px;
+            }
+
+            .ranking-table {
+                font-size: 14px;
+            }
+
+            #playerNameInput {
+                width: 150px;
+                font-size: 16px;
+            }
+        }
+
+        /* 横画面（Landscape）での調整 */
+        @media screen and (max-height: 450px) {
+            #startScreen h1 {
+                font-size: 32px;
+                margin-bottom: 5px;
+            }
+
+            #startScreen p {
+                font-size: 16px;
+            }
+
+            #gameOverScreen {
+                padding: 15px;
+            }
+
+            #gameOverScreen h1 {
+                font-size: 28px;
+                margin-bottom: 5px;
+            }
+
+            #gameOverScreen p {
+                margin-bottom: 10px;
+            }
+
+            .ranking-table {
+                margin: 10px auto;
+            }
         }
     </style>
 </head>
@@ -327,7 +401,7 @@
         // ■■■ ゲームバランス設定（ここを変えることで難易度を調整できます） ■■■
         const PLAYER_SIZE = 30;     // プレイヤー（自機）の1辺の長さ
         const FLOOR_HEIGHT = 10;    // 床（天井と地表）の厚み
-        const PLAY_HEIGHT = 500;    // 天井から地表までの垂直距離
+        let PLAY_HEIGHT = 500;      // 天井から地表までの垂直距離（リサイズで調整可能に）
 
         // ジャンプの挙動設定: 1.732 は tan(60°)
         // ここを変えるとジャンプ（重力反転）時の角度が変わります (例: 1.0 = 45度, 0.5 = 約26度)
@@ -397,13 +471,16 @@
             canvas.width = width;
             canvas.height = height;
 
+            // 画面高に合わせてプレイエリアの高さを調整（最大500、最小は画面高の80%）
+            PLAY_HEIGHT = Math.min(500, height * 0.8);
+
             // プレイエリアを画面中央に配置するための床の位置計算
             const centerY = height / 2;
             topFloorY = centerY - (PLAY_HEIGHT / 2);
             bottomFloorY = centerY + (PLAY_HEIGHT / 2);
 
-            // プレイヤーを画面左から30%の位置に固定
-            player.x = width * 0.3;
+            // プレイヤーを画面左から30%の位置に固定（幅が狭い場合は少し左に寄せる）
+            player.x = width < 600 ? width * 0.2 : width * 0.3;
 
             // プレイヤーのY座標を現在の状態に基づいて再計算（ガタつき防止）
             updatePlayerTargetY();
@@ -608,7 +685,7 @@
 
                     // スピードアップ
                     if (frameCount % 600 === 0) gameSpeed += 0.5;
-                    if (score % 1000 == 0) gameSpeed += 1;
+                    if (score % 1000 == 0) gameSpeed += 2;
                 }
 
                 // プレイヤーの上下移動（重力反転の反映）
