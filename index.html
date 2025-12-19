@@ -248,7 +248,8 @@
 
     <div id="gameVars">
         <div>SCORE: <span id="scoreDisplay">0</span></div>
-        <div>HIGH-SCORE: <span id="hiScoreValue">0</span></div>
+        <div>HI-SCORE: <span id="hiScoreValue">0</span></div>
+        <div style="color: #ffd700; text-shadow: 0 0 10px #ffd700;">COIN: <span id="coinDisplay">0</span></div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -256,6 +257,22 @@
     <div id="startScreen">
         <h1>NEON GRAVITY</h1>
         <p>TAP TO START</p>
+
+        <!-- スタート画面用ランキング -->
+        <div id="startRanking" style="margin-top: 20px;">
+            <h3 style="color: var(--neon-cyan); margin: 5px 0; font-size: 16px;">LEADERBOARD</h3>
+            <table class="ranking-table" id="startRankingTable" style="max-width: 250px; font-size: 14px;">
+                <!-- Javascript will fill this -->
+            </table>
+        </div>
+
+        <div id="skinShop">
+            <h3 style="color: var(--neon-cyan); margin: 10px 0;">SKIN SHOP</h3>
+            <div id="skinList"
+                style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; max-width: 400px; margin: 0 auto;">
+                <!-- Javascript will fill this -->
+            </div>
+        </div>
     </div>
 
     <div id="gameOverScreen">
@@ -321,12 +338,27 @@
             targetY: 0,         // 移動先の目標Y座標（重力反転で切り替わる）
             isOnTop: false,     // 現在の状態（false=地表, true=天井）
             color: '#0ff',      // プレイヤーの色
-            path: []            // プレイヤーの通った軌跡を保持する配列
+            path: [],            // プレイヤーの通った軌跡を保持する配列
+            visible: true       // プレイヤーの表示フラグ
         };
 
         // 配列管理
         let obstacles = [];     // 画面上に存在する障害物のリスト
         let particles = [];     // 爆発エフェクトのパーティクルリスト
+        let coins = [];         // 画面上に存在するコインのリスト
+
+        // --- コイン・スキン関連の追加変数 ---
+        let totalCoins = 0;
+        let ownedSkins = ['cyan']; // 初期スキン
+        let selectedSkinId = 'cyan';
+
+        const SKINS = [
+            { id: 'cyan', name: 'CYAN', color: '#0ff', price: 0 },
+            { id: 'pink', name: 'PINK', color: '#f0f', price: 50 },
+            { id: 'green', name: 'GREEN', color: '#0f0', price: 100 },
+            { id: 'yellow', name: 'GOLD', color: '#ffd700', price: 200 },
+            { id: 'white', name: 'SNOW', color: '#fff', price: 300 }
+        ];
 
         /**
          * 画面サイズが変更された際の処理
@@ -370,8 +402,8 @@
          * マウス、タッチ、キーボードの入力を受け取り、ゲーム開始または重力反転を実行します。
          */
         function handleInput(e) {
-            // ボタン（リトライボタンなど）がクリックされた場合はゲーム内操作としての入力を無視
-            if (e.target.tagName === 'BUTTON') return;
+            // ボタンや入力欄がクリックされた場合はゲーム内操作としての入力を無視
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
 
             // 未開始の場合はタップでゲームスタート
             if (!gameStarted) {
@@ -386,7 +418,7 @@
         // 各種イベントリスナーの登録
         window.addEventListener('mousedown', handleInput);
         window.addEventListener('touchstart', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
             e.preventDefault(); // デフォルトのスクロールやズーム動作を防止
             handleInput(e);
         }, { passive: false });
@@ -418,15 +450,36 @@
          * 障害物をランダムに生成します
          */
         function spawnObstacle() {
-            const isTop = Math.random() < 0.5;          // 天井か地表かをランダムに決定
-            const obsHeight = 100 + Math.random() * 40; // 障害物の高さをランダム化
-            const obsWidth = 30;                        // 障害物の幅
+            const rand = Math.random();
+            let type = 'normal';
+            // 歯車の出現率 20%, マット 20%, 通常 60%
+            if (rand < 0.2) type = 'cog';
+            else if (rand < 0.4) type = 'mat';
 
+            const isTop = Math.random() < 0.5;          // 天井か地表かをランダムに決定
+
+            let obsWidth = 30;
+            let obsHeight = 100 + Math.random() * 40;
             let y;
-            if (isTop) {
-                y = topFloorY + FLOOR_HEIGHT;           // 天井から下に伸びる
+            let rotation = 0;
+            let vr = 0;
+
+            if (type === 'cog') {
+                obsWidth = 60;
+                obsHeight = 60;
+                // 画面中央付近に浮遊
+                const margin = 100;
+                y = topFloorY + FLOOR_HEIGHT + margin + Math.random() * (PLAY_HEIGHT - FLOOR_HEIGHT * 2 - margin * 2 - obsHeight);
+                rotation = Math.random() * Math.PI * 2;
+                vr = (Math.random() - 0.5) * 0.2;
+            } else if (type === 'mat') {
+                obsWidth = 100 + Math.random() * 50;
+                obsHeight = 30 + Math.random() * 20; // マット型は低め
+                if (isTop) y = topFloorY + FLOOR_HEIGHT;
+                else y = bottomFloorY - FLOOR_HEIGHT - obsHeight;
             } else {
-                y = bottomFloorY - FLOOR_HEIGHT - obsHeight; // 地表から上に伸びる
+                if (isTop) y = topFloorY + FLOOR_HEIGHT;
+                else y = bottomFloorY - FLOOR_HEIGHT - obsHeight;
             }
 
             // 配列に新規オブジェクトを追加
@@ -436,22 +489,42 @@
                 w: obsWidth,
                 h: obsHeight,
                 color: '#f00',      // 障害物は赤色
-                isTop: isTop        // 描画時の向き判定に使用
+                isTop: isTop,       // 描画時の向き判定に使用
+                type: type,         // 障害物のタイプ
+                rotation: rotation,
+                vr: vr
             });
         }
 
         /**
-         * パーティクル（爆発）エフェクトを生成します
+         * コインをランダムな位置に生成します
          */
-        function createExplosion(x, y, count, color) {
+        function spawnCoin() {
+            const margin = 50;
+            const y = topFloorY + FLOOR_HEIGHT + margin + Math.random() * (PLAY_HEIGHT - FLOOR_HEIGHT * 2 - margin * 2);
+            coins.push({
+                x: width,
+                y: y,
+                size: 15
+            });
+        }
+
+        /**
+         * パーティクル（爆発/破片）エフェクトを生成します
+         */
+        function createExplosion(x, y, count, color, isShatter = false) {
             for (let i = 0; i < count; i++) {
                 particles.push({
-                    x: x + PLAYER_SIZE / 2,     // プレイヤーの中心から放出
-                    y: y + PLAYER_SIZE / 2,
-                    vx: (Math.random() - 0.5) * 10, // ランダムな速度
-                    vy: (Math.random() - 0.5) * 10,
-                    life: 1.0,                  // パーティクルの不透明度（寿命）
-                    color: color
+                    x: x + (isShatter ? Math.random() * PLAYER_SIZE : PLAYER_SIZE / 2),
+                    y: y + (isShatter ? Math.random() * PLAYER_SIZE : PLAYER_SIZE / 2),
+                    vx: (Math.random() - 0.5) * (isShatter ? 15 : 10),
+                    vy: (Math.random() - 0.5) * (isShatter ? 15 : 10),
+                    size: isShatter ? (Math.random() * 8 + 4) : (Math.random() * 3 + 2),
+                    rotation: Math.random() * Math.PI * 2,
+                    vr: (Math.random() - 0.5) * 0.2,
+                    life: 1.0,
+                    color: color,
+                    type: isShatter ? 'square' : 'circle'
                 });
             }
         }
@@ -460,73 +533,10 @@
          * ゲームの状態を更新するメイン関数（ロジック担当）
          */
         function update() {
-            if (!isRunning) return;
-
-            // スコアとフレームカウントの更新
-            if (gameStarted) {
-                score++;
-            }
+            // フレームカウントの更新 (描画タイミングに使用)
             frameCount++;
 
-            if (gameStarted) {
-                // UI上のスコア表示を更新（10フレームで1スコア相当）
-                document.getElementById('scoreDisplay').innerText = Math.floor(score / 10);
-
-                // 600フレーム（約10秒）ごとにスピードをわずかにアップ
-                if (frameCount % 600 === 0) {
-                    gameSpeed += 0.5;
-                }
-                if (score % 1000 == 0) {
-                    gameSpeed += 1;
-                }
-            }
-
-            // プレイヤーの軌跡（ライン）の更新
-            player.path.push({ x: player.x + PLAYER_SIZE / 2, y: player.y + PLAYER_SIZE / 2 });
-            for (let i = player.path.length - 1; i >= 0; i--) {
-                player.path[i].x -= gameSpeed; // 軌跡も背景に合わせて左へ
-                if (player.path[i].x < 0) {
-                    player.path.splice(i, 1); // 画面外に消えた軌跡を削除
-                }
-            }
-
-            // プレイヤーの上下移動（重力反転の反映）
-            // 60度の角度で移動するように垂直速度を計算
-            const vy = gameSpeed * JUMP_ANGLE_TAN;
-
-            if (player.y < player.targetY) {
-                player.y += vy; // 下へ移動
-                if (player.y > player.targetY) player.y = player.targetY; // 目標地点で停止
-            } else if (player.y > player.targetY) {
-                player.y -= vy; // 上へ移動
-                if (player.y < player.targetY) player.y = player.targetY; // 目標地点で停止
-            }
-
-            // 障害物の生成（ゲーム開始後のみ）
-            if (gameStarted && frameCount % Math.max(30, Math.floor(100 - gameSpeed * 5)) === 0) {
-                spawnObstacle();
-            }
-
-            // 障害物の更新と当たり判定
-            for (let i = obstacles.length - 1; i >= 0; i--) {
-                let obs = obstacles[i];
-                obs.x -= gameSpeed; // 左へ移動
-
-                // 当たり判定 (AABB方式: 矩形同士の重なりチェック)
-                if (
-                    player.x < obs.x + obs.w &&
-                    player.x + PLAYER_SIZE > obs.x &&
-                    player.y < obs.y + obs.h &&
-                    player.y + PLAYER_SIZE > obs.y
-                ) {
-                    gameOver(); // 衝突したらゲームオーバー
-                }
-
-                // 画面外に消えた障害物をリストから削除
-                if (obs.x + obs.w < 0) {
-                    obstacles.splice(i, 1);
-                }
-            }
+            // --- 常に更新（パーティクルのみゲームオーバー後も動く） ---
 
             // パーティクルの更新
             for (let i = particles.length - 1; i >= 0; i--) {
@@ -535,6 +545,87 @@
                 p.y += p.vy;
                 p.life -= 0.05; // 寿命を減らすことで少しずつ透明に
                 if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // --- ゲームプレイ中のみ更新するロジック ---
+            if (isRunning) {
+                // プレイヤーの軌跡（ライン）の更新
+                player.path.push({ x: player.x + PLAYER_SIZE / 2, y: player.y + PLAYER_SIZE / 2 });
+                for (let i = player.path.length - 1; i >= 0; i--) {
+                    player.path[i].x -= gameSpeed; // 軌跡も背景に合わせて左へ
+                    if (player.path[i].x < 0) {
+                        player.path.splice(i, 1); // 画面外に消えた軌跡を削除
+                    }
+                }
+
+                // スコアの更新
+                if (gameStarted) {
+                    score++;
+                    document.getElementById('scoreDisplay').innerText = Math.floor(score / 10);
+
+                    // スピードアップ
+                    if (frameCount % 600 === 0) gameSpeed += 0.5;
+                    if (score % 1000 == 0) gameSpeed += 2;
+                }
+
+                // プレイヤーの上下移動（重力反転の反映）
+                const vy = gameSpeed * JUMP_ANGLE_TAN;
+                if (player.y < player.targetY) {
+                    player.y += vy;
+                    if (player.y > player.targetY) player.y = player.targetY;
+                } else if (player.y > player.targetY) {
+                    player.y -= vy;
+                    if (player.y < player.targetY) player.y = player.targetY;
+                }
+
+                // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
+                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 10));
+                if (gameStarted && frameCount % spawnInterval === 0) {
+                    spawnObstacle();
+                }
+
+                // コインの生成
+                if (gameStarted && frameCount % 180 === 0) {
+                    spawnCoin();
+                }
+
+                // コインの更新と当たり判定
+                for (let i = coins.length - 1; i >= 0; i--) {
+                    let coin = coins[i];
+                    coin.x -= gameSpeed;
+                    const dx = (player.x + PLAYER_SIZE / 2) - coin.x;
+                    const dy = (player.y + PLAYER_SIZE / 2) - coin.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < PLAYER_SIZE / 2 + coin.size) {
+                        totalCoins++;
+                        saveGameData();
+                        updateCoinDisplay();
+                        createExplosion(coin.x, coin.y, 10, '#ffd700');
+                        coins.splice(i, 1);
+                        continue;
+                    }
+                    if (coin.x + coin.size < 0) coins.splice(i, 1);
+                }
+
+                // 障害物の更新と当たり判定
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    let obs = obstacles[i];
+                    obs.x -= gameSpeed;
+                    if (obs.type === 'cog') {
+                        obs.rotation += obs.vr;
+                    }
+
+                    if (player.visible &&
+                        player.x < obs.x + obs.w &&
+                        player.x + PLAYER_SIZE > obs.x &&
+                        player.y < obs.y + obs.h &&
+                        player.y + PLAYER_SIZE > obs.y
+                    ) {
+                        gameOver();
+                    }
+                    if (obs.x + obs.w < 0) obstacles.splice(i, 1);
+                }
             }
         }
 
@@ -550,7 +641,8 @@
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
             ctx.lineWidth = 1;
             const gridSize = 50;
-            const offset = (frameCount * gameSpeed) % gridSize; // 横に流れるようにオフセットを計算
+            // 横に流れるようにオフセットを計算（isRunning中のみ動く）
+            const offset = (isRunning ? (frameCount * gameSpeed) : 0) % gridSize;
 
             for (let x = -offset; x < width; x += gridSize) {
                 ctx.beginPath();
@@ -604,53 +696,120 @@
             }
 
             // プレイヤー本体の描画
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = player.color;
-            ctx.fillStyle = player.color;
-            ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
-            ctx.shadowBlur = 0;
+            if (player.visible) {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = player.color;
+                ctx.fillStyle = player.color;
+                ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
+                ctx.shadowBlur = 0;
+            }
 
-            // 障害物の描画（トゲトゲの三角形として表示）
+            // 障害物の描画
             obstacles.forEach(obs => {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = obs.color;
                 ctx.fillStyle = obs.color;
 
-                if (obs.isTop) {
-                    // 天井側：下向きの三角形
+                if (obs.type === 'mat') {
+                    // マット型：小さいトゲの連続
+                    const spikeWidth = 20;
+                    const numSpikes = Math.ceil(obs.w / spikeWidth);
+                    for (let i = 0; i < numSpikes; i++) {
+                        const sx = obs.x + i * spikeWidth;
+                        if (obs.isTop) {
+                            ctx.beginPath();
+                            ctx.moveTo(sx, obs.y);
+                            ctx.lineTo(sx + spikeWidth, obs.y);
+                            ctx.lineTo(sx + spikeWidth / 2, obs.y + obs.h);
+                            ctx.fill();
+                        } else {
+                            ctx.beginPath();
+                            ctx.moveTo(sx, obs.y + obs.h);
+                            ctx.lineTo(sx + spikeWidth, obs.y + obs.h);
+                            ctx.lineTo(sx + spikeWidth / 2, obs.y);
+                            ctx.fill();
+                        }
+                    }
+                } else if (obs.type === 'cog') {
+                    // 歯車型：中央に浮遊して回転
+                    ctx.save();
+                    ctx.translate(obs.x + obs.w / 2, obs.y + obs.h / 2);
+                    ctx.rotate(obs.rotation);
+
+                    // 歯車の本体（円）
                     ctx.beginPath();
-                    ctx.moveTo(obs.x, obs.y);
-                    ctx.lineTo(obs.x + obs.w, obs.y);
-                    ctx.lineTo(obs.x + obs.w / 2, obs.y + obs.h);
+                    ctx.arc(0, 0, obs.w / 2.5, 0, Math.PI * 2);
                     ctx.fill();
+
+                    // 歯車の歯
+                    const toothCount = 8;
+                    const toothDepth = 10;
+                    for (let i = 0; i < toothCount; i++) {
+                        ctx.rotate((Math.PI * 2) / toothCount);
+                        ctx.fillRect(-obs.w / 10, -obs.w / 2 - toothDepth / 2, obs.w / 5, toothDepth);
+                    }
+
+                    // 中央の穴
+                    ctx.fillStyle = '#050510';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, obs.w / 8, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
                 } else {
-                    // 地表側：上向きの三角形
-                    ctx.beginPath();
-                    ctx.moveTo(obs.x, obs.y + obs.h);
-                    ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
-                    ctx.lineTo(obs.x + obs.w / 2, obs.y);
-                    ctx.fill();
+                    // 通常型：1つの大きなトゲ
+                    if (obs.isTop) {
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x, obs.y);
+                        ctx.lineTo(obs.x + obs.w, obs.y);
+                        ctx.lineTo(obs.x + obs.w / 2, obs.y + obs.h);
+                        ctx.fill();
+                    } else {
+                        ctx.beginPath();
+                        ctx.moveTo(obs.x, obs.y + obs.h);
+                        ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
+                        ctx.lineTo(obs.x + obs.w / 2, obs.y);
+                        ctx.fill();
+                    }
                 }
+                ctx.shadowBlur = 0;
+            });
+
+            // コインの描画
+            coins.forEach(coin => {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ffd700';
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.shadowBlur = 0;
             });
 
             // パーティクルの描画
             particles.forEach(p => {
                 ctx.fillStyle = p.color;
-                ctx.globalAlpha = p.life; // 寿命（残りライフ）を透明度として利用
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.globalAlpha = p.life;
+                if (p.type === 'square') {
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation || 0);
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                    ctx.restore();
+                    p.rotation += (p.vr || 0);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size || 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             });
             ctx.globalAlpha = 1.0; // 透明度を戻す
 
-            // ゲームが停止していない場合は次のフレームを予約
-            if (isRunning) {
-                requestAnimationFrame(() => {
-                    update();
-                    draw();
-                });
-            }
+            // ゲームループを継続（演出を動かし続けるため常に実行）
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
         }
 
         /**
@@ -666,8 +825,12 @@
          * ゲームオーバー時の処理
          */
         function gameOver() {
-            isRunning = false; // ループを停止
-            createExplosion(player.x, player.y, 50, '#fff'); // 大きな白い爆発を生成
+            if (!isRunning) return; // 既に終了している場合は無視
+            isRunning = false; // ロジックのみ停止
+            player.visible = false; // プレイヤーを非表示（砕け散るため）
+
+            createExplosion(player.x, player.y, 40, player.color, true); // プレイヤーの砕け散る演出
+            createExplosion(player.x, player.y, 20, '#fff', false);      // インパクトの白い火花
 
             const finalScoreVal = Math.floor(score / 10);
             document.getElementById('finalScore').innerText = finalScoreVal;
@@ -722,39 +885,151 @@
         }
 
         /**
+         * ゲームデータを保存する
+         */
+        function saveGameData() {
+            localStorage.setItem('neonGravity_highScore', highScore);
+            localStorage.setItem('neonGravity_totalCoins', totalCoins);
+            localStorage.setItem('neonGravity_ownedSkins', JSON.stringify(ownedSkins));
+            localStorage.setItem('neonGravity_selectedSkinId', selectedSkinId);
+        }
+
+        /**
          * ランキングデータをロードする
          */
         function loadRankings() {
             const saved = localStorage.getItem('neonGravity_rankings');
             rankings = saved ? JSON.parse(saved) : [];
+
             // ハイスコアもロード
             const savedHi = localStorage.getItem('neonGravity_highScore');
             highScore = savedHi ? parseInt(savedHi) : 0;
             document.getElementById('hiScoreValue').innerText = highScore;
+
+            // コインとスキンもロード
+            const savedCoins = localStorage.getItem('neonGravity_totalCoins');
+            totalCoins = savedCoins ? parseInt(savedCoins) : 0;
+            updateCoinDisplay();
+
+            const savedSkins = localStorage.getItem('neonGravity_ownedSkins');
+            ownedSkins = savedSkins ? JSON.parse(savedSkins) : ['cyan'];
+
+            const savedSelected = localStorage.getItem('neonGravity_selectedSkinId');
+            if (savedSelected) {
+                applySkin(savedSelected);
+            }
+
+            renderSkinShop();
+            updateRankingDisplay(); // ランキング表示を更新
+        }
+
+        /**
+         * コイン表示を更新する
+         */
+        function updateCoinDisplay() {
+            const display = document.getElementById('coinDisplay');
+            if (display) display.innerText = totalCoins;
+        }
+
+        /**
+         * スキンショップを描画する
+         */
+        function renderSkinShop() {
+            const skinList = document.getElementById('skinList');
+            if (!skinList) return;
+
+            skinList.innerHTML = '';
+            SKINS.forEach(skin => {
+                const isOwned = ownedSkins.includes(skin.id);
+                const isSelected = selectedSkinId === skin.id;
+
+                const item = document.createElement('div');
+                item.style.cssText = `
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid ${isSelected ? skin.color : 'rgba(255,255,255,0.2)'};
+                    padding: 10px;
+                    border-radius: 10px;
+                    width: 70px;
+                    text-align: center;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: ${isSelected ? `0 0 10px ${skin.color}` : 'none'};
+                `;
+
+                item.innerHTML = `
+                    <div style="width: 30px; height: 30px; background: ${skin.color}; margin: 0 auto 5px; border-radius: 5px; box-shadow: 0 0 10px ${skin.color}"></div>
+                    <div style="font-size: 10px; margin-bottom: 5px; color: ${skin.color}">${skin.name}</div>
+                    <div style="font-size: 12px; font-weight: bold;">
+                        ${isOwned ? (isSelected ? 'USED' : 'SELECT') : skin.price + ' C'}
+                    </div>
+                `;
+
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    if (isOwned) {
+                        applySkin(skin.id);
+                    } else if (totalCoins >= skin.price) {
+                        buySkin(skin.id, skin.price);
+                    }
+                };
+
+                skinList.appendChild(item);
+            });
+        }
+
+        /**
+         * スキンを購入する
+         */
+        function buySkin(id, price) {
+            if (totalCoins >= price) {
+                totalCoins -= price;
+                ownedSkins.push(id);
+                applySkin(id);
+                saveGameData();
+                updateCoinDisplay();
+                renderSkinShop();
+            }
+        }
+
+        /**
+         * スキンを適用する
+         */
+        function applySkin(id) {
+            selectedSkinId = id;
+            const skin = SKINS.find(s => s.id === id);
+            if (skin) {
+                player.color = skin.color;
+                saveGameData();
+                renderSkinShop();
+            }
         }
 
         /**
          * ランキング表示を更新する
          */
         function updateRankingDisplay() {
-            const table = document.getElementById('rankingTable');
-            table.innerHTML = '<tr><th>RANK</th><th>NAME</th><th>SCORE</th></tr>';
+            const tables = [document.getElementById('rankingTable'), document.getElementById('startRankingTable')];
 
-            rankings.slice(0, 5).forEach((entry, index) => {
-                const row = table.insertRow(-1);
-                row.insertCell(0).innerText = index + 1;
-                row.insertCell(1).innerText = entry.name;
-                row.insertCell(2).innerText = entry.score;
+            tables.forEach(table => {
+                if (!table) return;
+                table.innerHTML = '<tr><th>RANK</th><th>NAME</th><th>SCORE</th></tr>';
+
+                rankings.slice(0, 5).forEach((entry, index) => {
+                    const row = table.insertRow(-1);
+                    row.insertCell(0).innerText = index + 1;
+                    row.insertCell(1).innerText = entry.name;
+                    row.insertCell(2).innerText = entry.score;
+                });
+
+                // ランク外の場合（データがない時）の表示
+                if (rankings.length === 0) {
+                    const row = table.insertRow(-1);
+                    const cell = row.insertCell(0);
+                    cell.colSpan = 3;
+                    cell.style.textAlign = 'center';
+                    cell.innerText = 'No records yet';
+                }
             });
-
-            // ランク外の場合（データがない時）の表示
-            if (rankings.length === 0) {
-                const row = table.insertRow(-1);
-                const cell = row.insertCell(0);
-                cell.colSpan = 3;
-                cell.style.textAlign = 'center';
-                cell.innerText = 'No records yet';
-            }
         }
 
         /**
@@ -787,14 +1062,23 @@
          * ブラウザのコンソールから resetRankingsAdmin() を実行してください。
          */
         window.resetRankingsAdmin = function () {
-            if (confirm("ランキングデータをすべてリセットしますか？")) {
+            if (confirm("ゲームデータをすべてリセットしますか？")) {
                 localStorage.removeItem('neonGravity_rankings');
                 localStorage.removeItem('neonGravity_highScore');
+                localStorage.removeItem('neonGravity_totalCoins');
+                localStorage.removeItem('neonGravity_ownedSkins');
+                localStorage.removeItem('neonGravity_selectedSkinId');
                 rankings = [];
                 highScore = 0;
+                totalCoins = 0;
+                ownedSkins = ['cyan'];
+                selectedSkinId = 'cyan';
+                applySkin('cyan');
                 const hiScoreElement = document.getElementById('hiScoreValue');
                 if (hiScoreElement) hiScoreElement.innerText = '0';
+                updateCoinDisplay();
                 updateRankingDisplay();
+                renderSkinShop();
                 alert("リセットが完了しました。");
             }
         };
@@ -806,9 +1090,11 @@
             score = 0;
             gameSpeed = 6;
             obstacles = [];
+            coins = [];
             particles = [];
             player.isOnTop = false;
             player.path = [];
+            player.visible = true; // プレイヤーを再表示
             updatePlayerTargetY();
             player.y = player.targetY;
             gameStarted = true; // リトライ時は即座に開始
