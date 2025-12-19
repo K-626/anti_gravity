@@ -579,7 +579,7 @@
                 }
 
                 // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
-                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 5));
+                const spawnInterval = Math.max(10, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 5));
                 if (gameStarted && frameCount % spawnInterval === 0) {
                     spawnObstacle();
                 }
@@ -1088,6 +1088,7 @@
 
             // 各種変数を初期値に戻す
             score = 0;
+            frameCount = 0; // フレームカウントをリセット（出現頻度計算を安定させるため）
             gameSpeed = 6;
             obstacles = [];
             coins = [];
@@ -1101,9 +1102,6 @@
 
             document.getElementById('gameOverScreen').style.display = 'none';
             isRunning = true;
-
-            // draw()を再度呼び出してループを確実に再開させる（isRunning=falseで停止していたため）
-            draw();
         }
 
         // Init
