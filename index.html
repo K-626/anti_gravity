@@ -331,6 +331,10 @@
         let highScore = 0;          // 歴代最高スコア
         let rankings = [];          // ランキングデータ [{name, score}, ...]
 
+        // --- Dreamlo Global Ranking 設定 ---
+        const DREAMLO_PUBLIC_URL = "https://www.dreamlo.com/lb/6763ba548f40771344408092";
+        const DREAMLO_PRIVATE_URL = "https://www.dreamlo.com/lb/eP_rR1_yq0GfW4-B_H23Gg6zst-1pDDECOe0YVn7zNCA";
+
         // プレイヤーのデータ構造
         let player = {
             x: 100,             // X座標（resize関数で設定される）
@@ -402,23 +406,25 @@
          * マウス、タッチ、キーボードの入力を受け取り、ゲーム開始または重力反転を実行します。
          */
         function handleInput(e) {
-            // ボタンや入力欄がクリックされた場合はゲーム内操作としての入力を無視
-            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-
-            // 未開始の場合はタップでゲームスタート
-            if (!gameStarted) {
-                startGame();
+            // ボタンやフォーム要素、その子要素をクリックした場合はゲームの操作を無視する
+            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#skinShop') || e.target.closest('.ranking-table')) {
                 return;
             }
 
-            // ゲーム中は重力反転を実行
-            toggleGravity();
+            if (!gameStarted) {
+                startGame(e);
+            } else if (isRunning) {
+                toggleGravity();
+            }
         }
 
         // 各種イベントリスナーの登録
         window.addEventListener('mousedown', handleInput);
         window.addEventListener('touchstart', (e) => {
-            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+            // UI要素を無視
+            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#skinShop') || e.target.closest('.ranking-table')) {
+                return;
+            }
             e.preventDefault(); // デフォルトのスクロールやズーム動作を防止
             handleInput(e);
         }, { passive: false });
@@ -565,7 +571,7 @@
 
                     // スピードアップ
                     if (frameCount % 600 === 0) gameSpeed += 0.5;
-                    if (score % 1000 == 0) gameSpeed += 0.5;
+                    if (score % 1000 == 0) gameSpeed += 2;
                 }
 
                 // プレイヤーの上下移動（重力反転の反映）
@@ -579,7 +585,7 @@
                 }
 
                 // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
-                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 1.5));
+                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 3));
                 if (gameStarted && frameCount % spawnInterval === 0) {
                     spawnObstacle();
                 }
@@ -898,15 +904,15 @@
          * ランキングデータをロードする
          */
         function loadRankings() {
+            // まずローカルデータをロード（即時表示用）
             const saved = localStorage.getItem('neonGravity_rankings');
             rankings = saved ? JSON.parse(saved) : [];
 
-            // ハイスコアもロード
+            // ハイスコア等
             const savedHi = localStorage.getItem('neonGravity_highScore');
             highScore = savedHi ? parseInt(savedHi) : 0;
             document.getElementById('hiScoreValue').innerText = highScore;
 
-            // コインとスキンもロード
             const savedCoins = localStorage.getItem('neonGravity_totalCoins');
             totalCoins = savedCoins ? parseInt(savedCoins) : 0;
             updateCoinDisplay();
@@ -915,12 +921,31 @@
             ownedSkins = savedSkins ? JSON.parse(savedSkins) : ['cyan'];
 
             const savedSelected = localStorage.getItem('neonGravity_selectedSkinId');
-            if (savedSelected) {
-                applySkin(savedSelected);
-            }
+            if (savedSelected) applySkin(savedSelected);
 
             renderSkinShop();
-            updateRankingDisplay(); // ランキング表示を更新
+            updateRankingDisplay();
+
+            // グローバルランキングを非同期でロード
+            fetch(`${DREAMLO_PUBLIC_URL}/json`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.dreamlo && data.dreamlo.leaderboard) {
+                        let entry = data.dreamlo.leaderboard.entry;
+                        if (!Array.isArray(entry)) entry = entry ? [entry] : [];
+
+                        // グローバルデータをマッピング
+                        const globalRankings = entry.map(e => ({
+                            name: e.name,
+                            score: parseInt(e.score)
+                        }));
+
+                        // ローカルとマージまたはグローバル優先（ここではグローバルを表示）
+                        rankings = globalRankings.slice(0, 10);
+                        updateRankingDisplay();
+                    }
+                })
+                .catch(err => console.error("Global ranking load failed:", err));
         }
 
         /**
@@ -1014,7 +1039,7 @@
                 if (!table) return;
                 table.innerHTML = '<tr><th>RANK</th><th>NAME</th><th>SCORE</th></tr>';
 
-                rankings.slice(0, 5).forEach((entry, index) => {
+                rankings.slice(0, 10).forEach((entry, index) => {
                     const row = table.insertRow(-1);
                     row.insertCell(0).innerText = index + 1;
                     row.insertCell(1).innerText = entry.name;
@@ -1040,21 +1065,25 @@
             const name = nameInput.value.trim() || 'NONAME';
             const finalScoreVal = Math.floor(score / 10);
 
-            // データを追加してソート
+            // ローカルに追加（即時反映）
             rankings.push({ name: name, score: finalScoreVal });
             rankings.sort((a, b) => b.score - a.score);
-
-            // TOP5のみ保持
-            rankings = rankings.slice(0, 5);
-
-            // 保存
+            rankings = rankings.slice(0, 10);
             localStorage.setItem('neonGravity_rankings', JSON.stringify(rankings));
+
+            // グローバルへ送信 (Dreamlo)
+            fetch(`${DREAMLO_PRIVATE_URL}/add/${encodeURIComponent(name)}/${finalScoreVal}`)
+                .then(() => {
+                    console.log("Global score submitted.");
+                    loadRankings(); // 再ロードして同期
+                })
+                .catch(err => console.error("Global submit failed:", err));
 
             // 画面更新
             updateRankingDisplay();
             document.getElementById('nameInputSection').style.display = 'none';
-            document.getElementById('rankingDisplay').style.display = 'block'; // 登録後もランキングを表示
-            nameInput.value = ''; // クリア
+            document.getElementById('rankingDisplay').style.display = 'block';
+            nameInput.value = '';
         }
 
         /**
