@@ -87,10 +87,20 @@
             left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
-            z-index: 20;
+            z-index: 1000;
+            /* 十分に高く */
             pointer-events: none;
-            /* タップを背後のキャンバスに透過させる */
+            /* 基本は透過 */
             user-select: none;
+        }
+
+        /* インタラクティブな子要素はクリックを受け付ける */
+        #skinShop,
+        #startRanking,
+        .ranking-table,
+        .prompt-buttons,
+        #nameInputSection {
+            pointer-events: auto !important;
         }
 
         /* タイトルのパルスアニメーション */
@@ -406,8 +416,11 @@
          * マウス、タッチ、キーボードの入力を受け取り、ゲーム開始または重力反転を実行します。
          */
         function handleInput(e) {
-            // ボタンやフォーム要素、その子要素をクリックした場合はゲームの操作を無視する
-            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#skinShop') || e.target.closest('.ranking-table')) {
+            // UI要素（ボタン、入力欄、スキンショップのアイテムなど）をクリックした場合は無視
+            if (e.target.closest('button') ||
+                e.target.closest('input') ||
+                e.target.closest('.skin-item') ||
+                e.target.closest('.ranking-table')) {
                 return;
             }
 
@@ -422,7 +435,10 @@
         window.addEventListener('mousedown', handleInput);
         window.addEventListener('touchstart', (e) => {
             // UI要素を無視
-            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#skinShop') || e.target.closest('.ranking-table')) {
+            if (e.target.closest('button') ||
+                e.target.closest('input') ||
+                e.target.closest('.skin-item') ||
+                e.target.closest('.ranking-table')) {
                 return;
             }
             e.preventDefault(); // デフォルトのスクロールやズーム動作を防止
@@ -430,10 +446,18 @@
         }, { passive: false });
 
         window.addEventListener('keydown', (e) => {
+            // 入力フォームにフォーカスがある場合はゲーム操作を行わない
+            if (document.activeElement.tagName === 'INPUT') return;
+
             // スペースキー、上矢印、下矢印で操作可能
             if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
                 if (gameStarted) {
-                    toggleGravity();
+                    if (isRunning) {
+                        toggleGravity();
+                    } else if (document.getElementById('gameOverScreen').style.display === 'block') {
+                        // ゲームオーバー表示中ならスペースでリスタート
+                        resetGame();
+                    }
                 } else {
                     startGame();
                 }
@@ -571,7 +595,7 @@
 
                     // スピードアップ
                     if (frameCount % 600 === 0) gameSpeed += 0.5;
-                    if (score % 1000 == 0) gameSpeed += 2;
+                    if (score % 1000 == 0) gameSpeed += 0.5;
                 }
 
                 // プレイヤーの上下移動（重力反転の反映）
@@ -585,7 +609,7 @@
                 }
 
                 // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
-                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 3));
+                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 1.5));
                 if (gameStarted && frameCount % spawnInterval === 0) {
                     spawnObstacle();
                 }
@@ -901,6 +925,24 @@
         }
 
         /**
+         * グローバルランキングのJSONPコールバック
+         */
+        window.onDreamloLoad = function (data) {
+            if (data && data.dreamlo && data.dreamlo.leaderboard) {
+                let entry = data.dreamlo.leaderboard.entry;
+                if (!Array.isArray(entry)) entry = entry ? [entry] : [];
+
+                const globalRankings = entry.map(e => ({
+                    name: decodeURIComponent(e.name),
+                    score: parseInt(e.score)
+                }));
+
+                rankings = globalRankings.slice(0, 10);
+                updateRankingDisplay();
+            }
+        };
+
+        /**
          * ランキングデータをロードする
          */
         function loadRankings() {
@@ -926,26 +968,13 @@
             renderSkinShop();
             updateRankingDisplay();
 
-            // グローバルランキングを非同期でロード
-            fetch(`${DREAMLO_PUBLIC_URL}/json`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data && data.dreamlo && data.dreamlo.leaderboard) {
-                        let entry = data.dreamlo.leaderboard.entry;
-                        if (!Array.isArray(entry)) entry = entry ? [entry] : [];
-
-                        // グローバルデータをマッピング
-                        const globalRankings = entry.map(e => ({
-                            name: e.name,
-                            score: parseInt(e.score)
-                        }));
-
-                        // ローカルとマージまたはグローバル優先（ここではグローバルを表示）
-                        rankings = globalRankings.slice(0, 10);
-                        updateRankingDisplay();
-                    }
-                })
-                .catch(err => console.error("Global ranking load failed:", err));
+            // JSONPでグローバルランキングをロード（CORS回避とキャッシュ対策）
+            const script = document.createElement('script');
+            const cacheBuster = Date.now();
+            script.src = `${DREAMLO_PUBLIC_URL}/jsonp?callback=onDreamloLoad&_=${cacheBuster}`;
+            document.body.appendChild(script);
+            // 読み込み終わったらタグを削除
+            script.onload = () => script.remove();
         }
 
         /**
@@ -969,8 +998,9 @@
                 const isSelected = selectedSkinId === skin.id;
 
                 const item = document.createElement('div');
+                item.className = 'skin-item';
                 item.style.cssText = `
-                    background: ${isSelected ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)'};
+                    background: ${isSelected ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)'};
                     border: 2px solid ${isSelected ? skin.color : 'rgba(255,255,255,0.2)'};
                     padding: 10px;
                     border-radius: 10px;
@@ -979,29 +1009,78 @@
                     cursor: pointer;
                     transition: all 0.2s;
                     box-shadow: ${isSelected ? `0 0 15px ${skin.color}` : 'none'};
-                    transform: ${isSelected ? 'scale(1.05)' : 'scale(1)'};
+                    transform: ${isSelected ? 'scale(1.1)' : 'scale(1)'};
+                    pointer-events: auto;
                 `;
 
                 item.innerHTML = `
                     <div style="width: 30px; height: 30px; background: ${skin.color}; margin: 0 auto 5px; border-radius: 5px; box-shadow: 0 0 10px ${skin.color}"></div>
                     <div style="font-size: 10px; margin-bottom: 5px; color: ${skin.color}">${skin.name}</div>
                     <div style="font-size: 12px; font-weight: bold;">
-                        ${isOwned ? (isSelected ? 'USED' : 'SELECT') : skin.price + ' C'}
+                        ${isOwned ? (isSelected ? 'USING' : 'SELECT') : skin.price + ' C'}
                     </div>
                 `;
 
+                // クリックイベント
                 item.onclick = (e) => {
+                    console.log("Skin item clicked:", skin.id);
                     e.stopPropagation();
                     if (isOwned) {
                         applySkin(skin.id);
+                        showToast(`Applied ${skin.name}`);
                     } else if (totalCoins >= skin.price) {
                         buySkin(skin.id, skin.price);
+                        showToast(`Bought ${skin.name}`);
+                    } else {
+                        showToast("Not enough coins!", "#f00");
                     }
                 };
+
+                // モバイル向け：touchstartで伝搬だけ止めてclickを待つ
+                item.ontouchstart = (e) => e.stopPropagation();
 
                 skinList.appendChild(item);
             });
         }
+
+        /**
+         * 簡易メッセージ（トースト）を表示する
+         */
+        function showToast(msg, color = "#0ff") {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.8);
+                color: ${color};
+                padding: 10px 20px;
+                border: 1px solid ${color};
+                border-radius: 5px;
+                z-index: 10000;
+                font-weight: bold;
+                pointer-events: none;
+                box-shadow: 0 0 10px ${color};
+                transition: opacity 0.5s;
+            `;
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 1000);
+        }
+
+        // デバッグ・テスト用：コインを増やす
+        window.addCoins = (n = 100) => {
+            totalCoins += n;
+            saveGameData();
+            updateCoinDisplay();
+            renderSkinShop();
+            showToast(`Added ${n} coins`);
+            console.log("Coins added:", n, "Total:", totalCoins);
+        };
 
         /**
          * スキンを購入する
@@ -1073,11 +1152,13 @@
             rankings = rankings.slice(0, 10);
             localStorage.setItem('neonGravity_rankings', JSON.stringify(rankings));
 
-            // グローバルへ送信 (Dreamlo)
-            fetch(`${DREAMLO_PRIVATE_URL}/add/${encodeURIComponent(name)}/${finalScoreVal}`)
+            // グローバルへ送信 (Dreamlo) - キャッシュ対策付き
+            const cacheBuster = Date.now();
+            fetch(`${DREAMLO_PRIVATE_URL}/add/${encodeURIComponent(name)}/${finalScoreVal}?_=${cacheBuster}`)
                 .then(() => {
                     console.log("Global score submitted.");
-                    loadRankings(); // 再ロードして同期
+                    // 少し待ってから再ロード（サーバー反映待ち）
+                    setTimeout(loadRankings, 500);
                 })
                 .catch(err => console.error("Global submit failed:", err));
 
@@ -1109,8 +1190,9 @@
                 const hiScoreElement = document.getElementById('hiScoreValue');
                 if (hiScoreElement) hiScoreElement.innerText = '0';
 
-                // グローバル削除 (Dreamlo)
-                fetch(`${DREAMLO_PRIVATE_URL}/clear`)
+                // グローバル削除 (Dreamlo) - キャッシュ対策付き
+                const cacheBuster = Date.now();
+                fetch(`${DREAMLO_PRIVATE_URL}/clear?_=${cacheBuster}`)
                     .then(() => {
                         console.log("Global leaderboard cleared.");
                         alert("ローカルとグローバルのリセットが完了しました。");
