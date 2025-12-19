@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neon Gravity Jump</title>
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <style>
         /* カラーパレットの定義 */
         :root {
@@ -341,9 +344,19 @@
         let highScore = 0;          // 歴代最高スコア
         let rankings = [];          // ランキングデータ [{name, score}, ...]
 
-        // --- Dreamlo Global Ranking 設定 ---
-        const DREAMLO_PUBLIC_URL = "https://www.dreamlo.com/lb/6763ba548f40771344408092";
-        const DREAMLO_PRIVATE_URL = "https://www.dreamlo.com/lb/eP_rR1_yq0GfW4-B_H23Gg6zst-1pDDECOe0YVn7zNCA";
+        // --- Firebase Global Ranking 設定 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBeWdMRgaHj0KTq3GfaaRQbOf7BJSBvZps",
+            authDomain: "antigravity-bcc5e.firebaseapp.com",
+            projectId: "antigravity-bcc5e",
+            storageBucket: "antigravity-bcc5e.firebasestorage.app",
+            messagingSenderId: "273645762334",
+            appId: "1:273645762334:web:c758c8e006d83ae033fb0f",
+            measurementId: "G-2FVHE219N5"
+        };
+        // Firebaseの初期化
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
         // プレイヤーのデータ構造
         let player = {
@@ -595,7 +608,7 @@
 
                     // スピードアップ
                     if (frameCount % 600 === 0) gameSpeed += 0.5;
-                    if (score % 1000 == 0) gameSpeed += 0.5;
+                    if (score % 1000 == 0) gameSpeed += 2;
                 }
 
                 // プレイヤーの上下移動（重力反転の反映）
@@ -609,7 +622,7 @@
                 }
 
                 // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
-                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 1.5));
+                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 3));
                 if (gameStarted && frameCount % spawnInterval === 0) {
                     spawnObstacle();
                 }
@@ -925,24 +938,6 @@
         }
 
         /**
-         * グローバルランキングのJSONPコールバック
-         */
-        window.onDreamloLoad = function (data) {
-            if (data && data.dreamlo && data.dreamlo.leaderboard) {
-                let entry = data.dreamlo.leaderboard.entry;
-                if (!Array.isArray(entry)) entry = entry ? [entry] : [];
-
-                const globalRankings = entry.map(e => ({
-                    name: decodeURIComponent(e.name),
-                    score: parseInt(e.score)
-                }));
-
-                rankings = globalRankings.slice(0, 10);
-                updateRankingDisplay();
-            }
-        };
-
-        /**
          * ランキングデータをロードする
          */
         function loadRankings() {
@@ -968,13 +963,24 @@
             renderSkinShop();
             updateRankingDisplay();
 
-            // JSONPでグローバルランキングをロード（CORS回避とキャッシュ対策）
-            const script = document.createElement('script');
-            const cacheBuster = Date.now();
-            script.src = `${DREAMLO_PUBLIC_URL}/jsonp?callback=onDreamloLoad&_=${cacheBuster}`;
-            document.body.appendChild(script);
-            // 読み込み終わったらタグを削除
-            script.onload = () => script.remove();
+            // Firebaseからランキングデータをロード
+            db.collection("rankings")
+                .orderBy("score", "desc")
+                .limit(10)
+                .get()
+                .then((querySnapshot) => {
+                    const globalRankings = [];
+                    querySnapshot.forEach((doc) => {
+                        globalRankings.push(doc.data());
+                    });
+                    if (globalRankings.length > 0) {
+                        rankings = globalRankings;
+                        updateRankingDisplay();
+                    }
+                })
+                .catch((error) => {
+                    console.error("Firebase load error:", error);
+                });
         }
 
         /**
@@ -1152,15 +1158,17 @@
             rankings = rankings.slice(0, 10);
             localStorage.setItem('neonGravity_rankings', JSON.stringify(rankings));
 
-            // グローバルへ送信 (Dreamlo) - キャッシュ対策付き
-            const cacheBuster = Date.now();
-            fetch(`${DREAMLO_PRIVATE_URL}/add/${encodeURIComponent(name)}/${finalScoreVal}?_=${cacheBuster}`)
+            // Firebaseへ送信
+            db.collection("rankings").add({
+                name: name,
+                score: finalScoreVal,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            })
                 .then(() => {
-                    console.log("Global score submitted.");
-                    // 少し待ってから再ロード（サーバー反映待ち）
-                    setTimeout(loadRankings, 500);
+                    console.log("Global score submitted to Firebase.");
+                    loadRankings(); // 再読み込み
                 })
-                .catch(err => console.error("Global submit failed:", err));
+                .catch(err => console.error("Firebase submit failed:", err));
 
             // 画面更新
             updateRankingDisplay();
@@ -1190,17 +1198,22 @@
                 const hiScoreElement = document.getElementById('hiScoreValue');
                 if (hiScoreElement) hiScoreElement.innerText = '0';
 
-                // グローバル削除 (Dreamlo) - キャッシュ対策付き
-                const cacheBuster = Date.now();
-                fetch(`${DREAMLO_PRIVATE_URL}/clear?_=${cacheBuster}`)
+                // グローバル削除 (Firebase)
+                db.collection("rankings").get().then((querySnapshot) => {
+                    const batch = db.batch();
+                    querySnapshot.forEach((doc) => {
+                        batch.delete(doc.ref);
+                    });
+                    return batch.commit();
+                })
                     .then(() => {
-                        console.log("Global leaderboard cleared.");
+                        console.log("Global leaderboard cleared in Firebase.");
                         alert("ローカルとグローバルのリセットが完了しました。");
                         loadRankings();
                     })
                     .catch(err => {
-                        console.error("Global clear failed:", err);
-                        alert("ローカルはリセットされましたが、グローバル消去に失敗しました。");
+                        console.error("Firebase clear failed:", err);
+                        alert("ローカルはリセットされましたが、Firebaseの消去に失敗しました。");
                     });
 
                 updateCoinDisplay();
