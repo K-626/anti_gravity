@@ -622,7 +622,7 @@
                 }
 
                 // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
-                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 1.5));
+                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500))*5);
                 if (gameStarted && frameCount % spawnInterval === 0) {
                     spawnObstacle();
                 }
