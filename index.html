@@ -401,15 +401,23 @@
         // ■■■ ゲームバランス設定（ここを変えることで難易度を調整できます） ■■■
         const PLAYER_SIZE = 30;     // プレイヤー（自機）の1辺の長さ
         const FLOOR_HEIGHT = 10;    // 床（天井と地表）の厚み
-        let PLAY_HEIGHT = 500;      // 天井から地表までの垂直距離（リサイズで調整可能に）
+        const PLAY_HEIGHT = 500;    // 天井から地表までの垂直距離
+
+        // 仮想解像度（ロジック上の座標系）
+        const LOGIC_WIDTH = 800;
+        const LOGIC_HEIGHT = 600;
 
         // ジャンプの挙動設定: 1.732 は tan(60°)
         // ここを変えるとジャンプ（重力反転）時の角度が変わります (例: 1.0 = 45度, 0.5 = 約26度)
         const JUMP_ANGLE_TAN = 1.732;
 
         // --- ゲームの状態管理変数 ---
-        let width, height;          // キャンバスの幅と高さ
-        let topFloorY, bottomFloorY;// 天井と地表のY座標
+        let width, height;          // 実キャンバス（画面）の幅と高さ
+        let gameScale = 1;          // 描画スケール
+        let renderOffsetX = 0;      // 描画オフセットX（中央寄せ用）
+        let renderOffsetY = 0;      // 描画オフセットY（中央寄せ用）
+
+        let topFloorY, bottomFloorY;// 天井と地表のY座標（仮想座標系における）
         let isRunning = true;       // ゲームループを実行中かどうか（常にtrueに設定し背景を動かす）
         let gameStarted = false;    // 実際にスコア計算や障害物生成が開始されているか
         let score = 0;              // 現在のスコア
@@ -463,7 +471,7 @@
 
         /**
          * 画面サイズが変更された際の処理
-         * キャンバスサイズを再設定し、プレイヤーや床の位置を計算し直します。
+         * キャンバスサイズを再設定し、仮想解像度のスケールを計算します。
          */
         function resize() {
             width = window.innerWidth;
@@ -471,16 +479,22 @@
             canvas.width = width;
             canvas.height = height;
 
-            // 画面高に合わせてプレイエリアの高さを調整（最大500、最小は画面高の80%）
-            PLAY_HEIGHT = Math.min(500, height * 0.8);
+            // スケール計算: 画面内に収まるように（アスペクト比維持）
+            const scaleX = width / LOGIC_WIDTH;
+            const scaleY = height / LOGIC_HEIGHT;
+            gameScale = Math.min(scaleX, scaleY);
 
-            // プレイエリアを画面中央に配置するための床の位置計算
-            const centerY = height / 2;
+            // 中央寄せのためのオフセット計算
+            renderOffsetX = (width - LOGIC_WIDTH * gameScale) / 2;
+            renderOffsetY = (height - LOGIC_HEIGHT * gameScale) / 2;
+
+            // 仮想座標系での床位置計算（画面中央）
+            const centerY = LOGIC_HEIGHT / 2;
             topFloorY = centerY - (PLAY_HEIGHT / 2);
             bottomFloorY = centerY + (PLAY_HEIGHT / 2);
 
-            // プレイヤーを画面左から30%の位置に固定（幅が狭い場合は少し左に寄せる）
-            player.x = width < 600 ? width * 0.2 : width * 0.3;
+            // プレイヤーを画面左から30%の位置に固定（仮想空間）
+            player.x = LOGIC_WIDTH * 0.3;
 
             // プレイヤーのY座標を現在の状態に基づいて再計算（ガタつき防止）
             updatePlayerTargetY();
@@ -604,7 +618,7 @@
 
             // 配列に新規オブジェクトを追加
             obstacles.push({
-                x: width,           // 画面右端から出現
+                x: LOGIC_WIDTH,     // 仮想画面右端から出現
                 y: y,
                 w: obsWidth,
                 h: obsHeight,
@@ -623,7 +637,7 @@
             const margin = 50;
             const y = topFloorY + FLOOR_HEIGHT + margin + Math.random() * (PLAY_HEIGHT - FLOOR_HEIGHT * 2 - margin * 2);
             coins.push({
-                x: width,
+                x: LOGIC_WIDTH, // 仮想画面右端から出現
                 y: y,
                 size: 15
             });
@@ -752,10 +766,23 @@
         /**
          * 描画を担当するメイン関数
          */
+        /**
+         * 描画を担当するメイン関数
+         */
         function draw() {
-            // 背景のクリア
+            // 背景のクリア (実画面全体)
             ctx.fillStyle = '#050510';
             ctx.fillRect(0, 0, width, height);
+
+            // --- 仮想解像度の適用 ---
+            ctx.save();
+            ctx.translate(renderOffsetX, renderOffsetY);
+            ctx.scale(gameScale, gameScale);
+
+            // クリッピング (プレイエリア外を描画しない)
+            // ctx.beginPath();
+            // ctx.rect(0, 0, LOGIC_WIDTH, LOGIC_HEIGHT);
+            // ctx.clip();
 
             // 背景グリッド（レトロな雰囲気用）の描画
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
@@ -764,23 +791,24 @@
             // 横に流れるようにオフセットを計算（isRunning中のみ動く）
             const offset = (isRunning ? (frameCount * gameSpeed) : 0) % gridSize;
 
-            for (let x = -offset; x < width; x += gridSize) {
+            // グリッドは仮想画面全体より少し広く描画して切れ目が見えないようにする
+            for (let x = -offset - gridSize; x < LOGIC_WIDTH + gridSize; x += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(x, 0);
-                ctx.lineTo(x, height);
+                ctx.lineTo(x, LOGIC_HEIGHT);
                 ctx.stroke();
             }
-            for (let y = 0; y < height; y += gridSize) {
+            for (let y = 0; y < LOGIC_HEIGHT; y += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(0, y);
-                ctx.lineTo(width, y);
+                ctx.lineTo(LOGIC_WIDTH, y);
                 ctx.stroke();
             }
 
             // 床の描画（濃いグレーの土台）
             ctx.fillStyle = '#111';
-            ctx.fillRect(0, topFloorY, width, FLOOR_HEIGHT); // 天井
-            ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, width, FLOOR_HEIGHT); // 地表
+            ctx.fillRect(0, topFloorY, LOGIC_WIDTH, FLOOR_HEIGHT); // 天井
+            ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, LOGIC_WIDTH, FLOOR_HEIGHT); // 地表
 
             // ネオンラインの描画（現在いる側の床を光らせる）
             ctx.shadowBlur = 10;
@@ -791,7 +819,7 @@
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(0, bottomFloorY - FLOOR_HEIGHT);
-            ctx.lineTo(width, bottomFloorY - FLOOR_HEIGHT);
+            ctx.lineTo(LOGIC_WIDTH, bottomFloorY - FLOOR_HEIGHT);
             ctx.stroke();
 
             // 上側の床のライン
@@ -799,7 +827,7 @@
             ctx.strokeStyle = '#f0f';
             ctx.beginPath();
             ctx.moveTo(0, topFloorY + FLOOR_HEIGHT);
-            ctx.lineTo(width, topFloorY + FLOOR_HEIGHT);
+            ctx.lineTo(LOGIC_WIDTH, topFloorY + FLOOR_HEIGHT);
             ctx.stroke();
             ctx.shadowBlur = 0; // 他の描画に影を引き継がないようリセット
 
@@ -924,6 +952,8 @@
                 }
             });
             ctx.globalAlpha = 1.0; // 透明度を戻す
+
+            ctx.restore(); // 仮想解像度の変形を終了
 
             // ゲームループを継続（演出を動かし続けるため常に実行）
             requestAnimationFrame(() => {
