@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Neon Gravity Jump</title>
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -61,6 +61,33 @@
         #hiScoreValue {
             color: var(--neon-pink);
             text-shadow: 0 0 10px var(--neon-pink);
+        }
+
+        #settingsVars {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            pointer-events: auto;
+            z-index: 1000;
+        }
+
+        #colorModeToggle {
+            padding: 8px 15px;
+            font-size: 14px;
+            border: 2px solid var(--neon-green);
+            background: transparent;
+            color: var(--neon-green);
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 0 5px var(--neon-green);
+            transition: all 0.3s ease;
+        }
+
+        #colorModeToggle:hover {
+            background: var(--neon-green);
+            color: black;
+            box-shadow: 0 0 15px var(--neon-green);
         }
 
         /* ゲームオーバー画面の設定 */
@@ -290,6 +317,17 @@
                 font-size: 14px;
             }
 
+            #settingsVars {
+                top: 10px;
+                right: 10px;
+            }
+
+            #colorModeToggle {
+                padding: 4px 8px;
+                font-size: 10px;
+                border: 1px solid var(--neon-green);
+            }
+
             .ranking-table {
                 font-size: 14px;
             }
@@ -336,7 +374,11 @@
     <div id="gameVars">
         <div>SCORE: <span id="scoreDisplay">0</span></div>
         <div>HI-SCORE: <span id="hiScoreValue">0</span></div>
-        <div style="color: #ffd700; text-shadow: 0 0 10px #ffd700;">COIN: <span id="coinDisplay">0</span></div>
+        <div id="coinVars" style="color: var(--neon-yellow, #ffd700); text-shadow: 0 0 10px var(--neon-yellow, #ffd700);">COIN: <span id="coinDisplay">0</span></div>
+    </div>
+
+    <div id="settingsVars">
+        <button id="colorModeToggle" onclick="toggleColorMode(event)">GENTLE COLOR: OFF</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -468,6 +510,70 @@
             { id: 'yellow', name: 'GOLD', color: '#ffd700', price: 200 },
             { id: 'white', name: 'INVISIBLE', color: '#0B0B1F', price: 10 }
         ];
+
+        // --- カラーパレット（色覚・目に優しいモード用） ---
+        const NORMAL_COLORS = {
+            bg: '#050510',
+            cyan: '#0ff',
+            pink: '#f0f',
+            green: '#0f0',
+            red: '#f00',
+            floor: '#111',
+            shadow: '#333',
+            white: '#0B0B1F',
+            coin: '#ffd700'
+        };
+
+        const GENTLE_COLORS = {
+            bg: '#1a1a24',
+            cyan: '#4ea8de',   // 優しいシアン
+            pink: '#f4a261',   // 優しいオレンジ（ピンクの代替）
+            green: '#2a9d8f',  // 優しいグリーン
+            red: '#e76f51',    // 優しいレッド
+            floor: '#2b2b36',
+            shadow: '#444',
+            white: '#2b2b36',
+            coin: '#e9c46a'
+        };
+
+        let currentColors = NORMAL_COLORS;
+        let isGentleMode = false;
+
+        function toggleColorMode(e) {
+            if (e) e.stopPropagation(); // ゲーム操作を誤爆させない
+            isGentleMode = !isGentleMode;
+            document.getElementById('colorModeToggle').innerText = `GENTLE COLOR: ${isGentleMode ? 'ON' : 'OFF'}`;
+            applyColorMode();
+            saveGameData();
+        }
+
+        function applyColorMode() {
+            currentColors = isGentleMode ? GENTLE_COLORS : NORMAL_COLORS;
+            
+            // CSS変数の更新
+            document.documentElement.style.setProperty('--bg-color', currentColors.bg);
+            document.documentElement.style.setProperty('--neon-cyan', currentColors.cyan);
+            document.documentElement.style.setProperty('--neon-pink', currentColors.pink);
+            document.documentElement.style.setProperty('--neon-green', currentColors.green);
+            document.documentElement.style.setProperty('--neon-red', currentColors.red);
+            document.documentElement.style.setProperty('--neon-yellow', currentColors.coin);
+            
+            // コインのUI色を更新
+            document.getElementById('coinVars').style.color = currentColors.coin;
+            document.getElementById('coinVars').style.textShadow = `0 0 10px ${currentColors.coin}`;
+
+            // スキンの色を更新
+            SKINS.find(s => s.id === 'cyan').color = currentColors.cyan;
+            SKINS.find(s => s.id === 'pink').color = currentColors.pink;
+            SKINS.find(s => s.id === 'green').color = currentColors.green;
+            SKINS.find(s => s.id === 'yellow').color = currentColors.coin;
+            SKINS.find(s => s.id === 'white').color = currentColors.white;
+
+            // プレイヤーと障害物の色を更新
+            applySkin(selectedSkinId);
+            obstacles.forEach(o => { o.color = currentColors.red; });
+            renderSkinShop();
+        }
 
         /**
          * 画面サイズが変更された際の処理
@@ -622,7 +728,7 @@
                 y: y,
                 w: obsWidth,
                 h: obsHeight,
-                color: '#f00',      // 障害物は赤色
+                color: currentColors.red, // 障害物は赤色（モードに応じる）
                 isTop: isTop,       // 描画時の向き判定に使用
                 type: type,         // 障害物のタイプ
                 rotation: rotation,
@@ -670,8 +776,7 @@
             // フレームカウントの更新 (描画タイミングに使用)
             frameCount++;
 
-            // --- 常に更新（パーティクルのみゲームオーバー後も動く） ---
-
+            // --- 常に更新（パーティクルのみゲームオーバー後も動く）
             // パーティクルの更新
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
@@ -698,8 +803,8 @@
                     document.getElementById('scoreDisplay').innerText = Math.floor(score / 10);
 
                     // スピードアップ
-                    if (frameCount % 600 === 0) gameSpeed += 1;
-                    if (score % 1000 == 0) gameSpeed += 3;
+                    if (frameCount % 600 === 0) gameSpeed += 0.5;
+                    if (score % 1000 == 0) gameSpeed += 1;
                 }
 
                 // プレイヤーの上下移動（重力反転の反映）
@@ -713,7 +818,7 @@
                 }
 
                 // 障害物の生成（頻度を1.5倍に強化、さらにスコアに応じて加速）
-                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 500)) / 0.5));
+                const spawnInterval = Math.max(15, Math.floor((100 - gameSpeed * 5 - Math.floor(score / 300))));
                 if (gameStarted && frameCount % spawnInterval === 0) {
                     spawnObstacle();
                 }
@@ -735,7 +840,7 @@
                         totalCoins++;
                         saveGameData();
                         updateCoinDisplay();
-                        createExplosion(coin.x, coin.y, 10, '#ffd700');
+                        createExplosion(coin.x, coin.y, 10, currentColors.coin);
                         coins.splice(i, 1);
                         continue;
                     }
@@ -771,7 +876,7 @@
          */
         function draw() {
             // 背景のクリア (実画面全体)
-            ctx.fillStyle = '#050510';
+            ctx.fillStyle = currentColors.bg;
             ctx.fillRect(0, 0, width, height);
 
             // --- 仮想解像度の適用 ---
@@ -806,7 +911,7 @@
             }
 
             // 床の描画（濃いグレーの土台）
-            ctx.fillStyle = '#111';
+            ctx.fillStyle = currentColors.floor;
             ctx.fillRect(0, topFloorY, LOGIC_WIDTH, FLOOR_HEIGHT); // 天井
             ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, LOGIC_WIDTH, FLOOR_HEIGHT); // 地表
 
@@ -814,8 +919,8 @@
             ctx.shadowBlur = 10;
 
             // 下側の床のライン
-            ctx.shadowColor = player.isOnTop ? '#333' : '#0ff';
-            ctx.strokeStyle = '#0ff';
+            ctx.shadowColor = player.isOnTop ? currentColors.shadow : currentColors.cyan;
+            ctx.strokeStyle = currentColors.cyan;
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(0, bottomFloorY - FLOOR_HEIGHT);
@@ -823,8 +928,8 @@
             ctx.stroke();
 
             // 上側の床のライン
-            ctx.shadowColor = player.isOnTop ? '#f0f' : '#333';
-            ctx.strokeStyle = '#f0f';
+            ctx.shadowColor = player.isOnTop ? currentColors.pink : currentColors.shadow;
+            ctx.strokeStyle = currentColors.pink;
             ctx.beginPath();
             ctx.moveTo(0, topFloorY + FLOOR_HEIGHT);
             ctx.lineTo(LOGIC_WIDTH, topFloorY + FLOOR_HEIGHT);
@@ -898,7 +1003,7 @@
                     }
 
                     // 中央の穴
-                    ctx.fillStyle = '#050510';
+                    ctx.fillStyle = currentColors.bg;
                     ctx.beginPath();
                     ctx.arc(0, 0, obs.w / 8, 0, Math.PI * 2);
                     ctx.fill();
@@ -926,8 +1031,8 @@
             // コインの描画
             coins.forEach(coin => {
                 ctx.shadowBlur = 15;
-                ctx.shadowColor = '#ffd700';
-                ctx.fillStyle = '#ffd700';
+                ctx.shadowColor = currentColors.coin;
+                ctx.fillStyle = currentColors.coin;
                 ctx.beginPath();
                 ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
                 ctx.fill();
@@ -1042,6 +1147,7 @@
             localStorage.setItem('neonGravity_totalCoins', totalCoins);
             localStorage.setItem('neonGravity_ownedSkins', JSON.stringify(ownedSkins));
             localStorage.setItem('neonGravity_selectedSkinId', selectedSkinId);
+            localStorage.setItem('neonGravity_gentleMode', isGentleMode);
         }
 
         /**
@@ -1066,6 +1172,13 @@
 
             const savedSelected = localStorage.getItem('neonGravity_selectedSkinId');
             if (savedSelected) applySkin(savedSelected);
+
+            const savedMode = localStorage.getItem('neonGravity_gentleMode');
+            if (savedMode === 'true') {
+                isGentleMode = true;
+                document.getElementById('colorModeToggle').innerText = 'GENTLE COLOR: ON';
+            }
+            applyColorMode();
 
             renderSkinShop();
             updateRankingDisplay();
