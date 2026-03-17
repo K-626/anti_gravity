@@ -374,11 +374,13 @@
     <div id="gameVars">
         <div>SCORE: <span id="scoreDisplay">0</span></div>
         <div>HI-SCORE: <span id="hiScoreValue">0</span></div>
-        <div id="coinVars" style="color: var(--neon-yellow, #ffd700); text-shadow: 0 0 10px var(--neon-yellow, #ffd700);">COIN: <span id="coinDisplay">0</span></div>
+        <div id="coinVars"
+            style="color: var(--neon-yellow, #ffd700); text-shadow: 0 0 10px var(--neon-yellow, #ffd700);">COIN: <span
+                id="coinDisplay">0</span></div>
     </div>
 
     <div id="settingsVars">
-        <button id="colorModeToggle" onclick="toggleColorMode(event)">GENTLE COLOR: OFF</button>
+        <button id="colorModeToggle" onclick="toggleColorMode(event)">COLOR: NORMAL</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -536,20 +538,39 @@
             coin: '#e9c46a'
         };
 
+        const APOCALYPSE_COLORS = {
+            bg: '#ffffff',     // 白背景
+            cyan: '#000000',   // 黒（プレイヤー・パスなど）
+            pink: '#444444',   // 濃い灰色（天井）
+            green: '#000000',  // 黒（ボタン・文字）
+            red: '#888888',    // 灰色（障害物）
+            floor: '#cccccc',  // 薄い灰色（床）
+            shadow: '#aaaaaa', // 影
+            white: '#000000',
+            coin: '#555555'    // 灰色（コイン）
+        };
+
         let currentColors = NORMAL_COLORS;
-        let isGentleMode = false;
+        let colorModeState = 0; // 0: NORMAL, 1: GENTLE, 2: APOCALYPSE
 
         function toggleColorMode(e) {
             if (e) e.stopPropagation(); // ゲーム操作を誤爆させない
-            isGentleMode = !isGentleMode;
-            document.getElementById('colorModeToggle').innerText = `GENTLE COLOR: ${isGentleMode ? 'ON' : 'OFF'}`;
+            colorModeState = (colorModeState + 1) % 3;
+            
+            let label = "NORMAL";
+            if (colorModeState === 1) label = "GENTLE";
+            if (colorModeState === 2) label = "APOCALYPSE";
+            
+            document.getElementById('colorModeToggle').innerText = `COLOR: ${label}`;
             applyColorMode();
             saveGameData();
         }
 
         function applyColorMode() {
-            currentColors = isGentleMode ? GENTLE_COLORS : NORMAL_COLORS;
-            
+            if (colorModeState === 0) currentColors = NORMAL_COLORS;
+            else if (colorModeState === 1) currentColors = GENTLE_COLORS;
+            else if (colorModeState === 2) currentColors = APOCALYPSE_COLORS;
+
             // CSS変数の更新
             document.documentElement.style.setProperty('--bg-color', currentColors.bg);
             document.documentElement.style.setProperty('--neon-cyan', currentColors.cyan);
@@ -557,7 +578,7 @@
             document.documentElement.style.setProperty('--neon-green', currentColors.green);
             document.documentElement.style.setProperty('--neon-red', currentColors.red);
             document.documentElement.style.setProperty('--neon-yellow', currentColors.coin);
-            
+
             // コインのUI色を更新
             document.getElementById('coinVars').style.color = currentColors.coin;
             document.getElementById('coinVars').style.textShadow = `0 0 10px ${currentColors.coin}`;
@@ -890,7 +911,7 @@
             // ctx.clip();
 
             // 背景グリッド（レトロな雰囲気用）の描画
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.strokeStyle = (colorModeState === 2) ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.03)';
             ctx.lineWidth = 1;
             const gridSize = 50;
             // 横に流れるようにオフセットを計算（isRunning中のみ動く）
@@ -916,7 +937,7 @@
             ctx.fillRect(0, bottomFloorY - FLOOR_HEIGHT, LOGIC_WIDTH, FLOOR_HEIGHT); // 地表
 
             // ネオンラインの描画（現在いる側の床を光らせる）
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = (colorModeState === 2) ? 0 : 10;
 
             // 下側の床のライン
             ctx.shadowColor = player.isOnTop ? currentColors.shadow : currentColors.cyan;
@@ -950,7 +971,7 @@
 
             // プレイヤー本体の描画
             if (player.visible) {
-                ctx.shadowBlur = 20;
+                ctx.shadowBlur = (colorModeState === 2) ? 0 : 20;
                 ctx.shadowColor = player.color;
                 ctx.fillStyle = player.color;
                 ctx.fillRect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
@@ -959,7 +980,7 @@
 
             // 障害物の描画
             obstacles.forEach(obs => {
-                ctx.shadowBlur = 15;
+                ctx.shadowBlur = (colorModeState === 2) ? 0 : 15;
                 ctx.shadowColor = obs.color;
                 ctx.fillStyle = obs.color;
 
@@ -1030,7 +1051,7 @@
 
             // コインの描画
             coins.forEach(coin => {
-                ctx.shadowBlur = 15;
+                ctx.shadowBlur = (colorModeState === 2) ? 0 : 15;
                 ctx.shadowColor = currentColors.coin;
                 ctx.fillStyle = currentColors.coin;
                 ctx.beginPath();
@@ -1147,7 +1168,7 @@
             localStorage.setItem('neonGravity_totalCoins', totalCoins);
             localStorage.setItem('neonGravity_ownedSkins', JSON.stringify(ownedSkins));
             localStorage.setItem('neonGravity_selectedSkinId', selectedSkinId);
-            localStorage.setItem('neonGravity_gentleMode', isGentleMode);
+            localStorage.setItem('neonGravity_colorModeState', colorModeState);
         }
 
         /**
@@ -1173,10 +1194,13 @@
             const savedSelected = localStorage.getItem('neonGravity_selectedSkinId');
             if (savedSelected) applySkin(savedSelected);
 
-            const savedMode = localStorage.getItem('neonGravity_gentleMode');
-            if (savedMode === 'true') {
-                isGentleMode = true;
-                document.getElementById('colorModeToggle').innerText = 'GENTLE COLOR: ON';
+            const savedMode = localStorage.getItem('neonGravity_colorModeState');
+            if (savedMode !== null) {
+                colorModeState = parseInt(savedMode);
+                let label = "NORMAL";
+                if (colorModeState === 1) label = "GENTLE";
+                if (colorModeState === 2) label = "APOCALYPSE";
+                document.getElementById('colorModeToggle').innerText = `COLOR: ${label}`;
             }
             applyColorMode();
 
